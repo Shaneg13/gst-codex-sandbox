@@ -161,7 +161,7 @@ For this behavior-preserving pass:
 
 ### Head-to-Head Match Play Follow-ups
 
-1. Add net match-play scoring only with explicit stroke-allocation fixtures for 9-hole and 18-hole matches.
+1. Expand net match-play fixtures for multiple HCI differences, multi-stroke holes, plus handicaps, and 9-hole/18-hole matches.
 2. Validate and version `gstH2HMatch` before adding automatic match resume across page refreshes.
 3. Keep H2H match history separate from `savedScorecardRounds` unless a backward-compatible shared history schema is designed.
 4. Extract shared score-control rendering only after both Scorecard Mode and H2H visual behavior have real-browser regression coverage.

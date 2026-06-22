@@ -104,14 +104,17 @@ The verifier checks:
 12. Confirm each hole has My Score and Opponent Score `+`/`−` controls.
 13. Enter both scores on a hole.
 14. Confirm the label reads exactly `Current Hole Result:`.
-15. Confirm the gross hole winner or tie updates immediately.
-16. Confirm the top player names and match status update immediately.
-17. Repeat with an 18-hole match and confirm all 18 holes appear.
-18. Return to Head-to-Head and open Compare Gross and Net Scores.
-19. Enter both gross scores and the opponent HCI, then confirm the existing comparison result still works.
-20. Open regular Scorecard Mode and confirm its layout and score controls remain unchanged.
+15. Confirm both players' gross score, strokes received, and net score are displayed.
+16. Confirm the lower-HCI player receives zero strokes.
+17. Confirm the higher-HCI player receives the HCI difference by hole HCP/stroke index.
+18. Confirm equal net scores display `Hole halved`.
+19. Confirm the net hole winner and top match status update immediately.
+20. Repeat with an 18-hole match and confirm all 18 holes appear.
+21. Return to Head-to-Head and open Compare Gross and Net Scores.
+22. Enter both gross scores and the opponent HCI, then confirm the existing comparison result still works.
+23. Open regular Scorecard Mode and confirm its layout and score controls remain unchanged.
 
-Match-play results are gross-only in this pass. Net match play is a documented future enhancement and must not be reported as implemented.
+Match-play inputs remain gross scores. Hole results and the running match are decided by calculated net scores.
 
 ### Field-Test Hardening Checklist
 

@@ -1759,26 +1759,88 @@ function renderH2HHole() {
     renderH2HMatchScorecard();
 }
 
+// H2H match-play net scoring helpers.
+function getH2HMatchPlayStrokesFromDifference(holeHandicap, hciDifference) {
+    const normalizedDifference = Math.max(0, Number(hciDifference) || 0);
+    const fullRoundsOfStrokes = Math.floor(normalizedDifference / 18);
+    const remainingStrokes = normalizedDifference - (fullRoundsOfStrokes * 18);
+
+    return fullRoundsOfStrokes +
+        (remainingStrokes >= holeHandicap ? 1 : 0);
+}
+
+function getH2HMatchPlayStrokesForHole(hole) {
+    if (!h2hMatch) {
+        return { player1: 0, player2: 0 };
+    }
+
+    const player1Hci = Number(h2hMatch.players[0].hci) || 0;
+    const player2Hci = Number(h2hMatch.players[1].hci) || 0;
+    const hciDifference = Math.abs(player1Hci - player2Hci);
+    const strokesReceived = getH2HMatchPlayStrokesFromDifference(
+        hole.hcp,
+        hciDifference
+    );
+
+    if (player1Hci > player2Hci) {
+        return { player1: strokesReceived, player2: 0 };
+    }
+
+    if (player2Hci > player1Hci) {
+        return { player1: 0, player2: strokesReceived };
+    }
+
+    return { player1: 0, player2: 0 };
+}
+
+function getH2HNetScore(grossScore, strokesReceived) {
+    if (grossScore === null || grossScore === undefined) {
+        return null;
+    }
+
+    return grossScore - strokesReceived;
+}
+
+function getH2HMatchPlayHoleScores(holeIndex) {
+    if (!h2hMatch) return null;
+
+    const hole = h2hMatch.holes[holeIndex];
+    const grossScores = h2hMatch.scores[holeIndex];
+    const strokes = getH2HMatchPlayStrokesForHole(hole);
+
+    return {
+        gross: {
+            player1: grossScores.player1,
+            player2: grossScores.player2
+        },
+        strokes,
+        net: {
+            player1: getH2HNetScore(grossScores.player1, strokes.player1),
+            player2: getH2HNetScore(grossScores.player2, strokes.player2)
+        }
+    };
+}
+
 function getH2HMatchPlayHoleResult(holeIndex) {
     if (!h2hMatch) return "";
 
-    const scores = h2hMatch.scores[holeIndex];
+    const scores = getH2HMatchPlayHoleScores(holeIndex);
     const player1 = h2hMatch.players[0];
     const player2 = h2hMatch.players[1];
 
-    if (scores.player1 === null || scores.player2 === null) {
+    if (scores.net.player1 === null || scores.net.player2 === null) {
         return "Enter both scores";
     }
 
-    if (scores.player1 < scores.player2) {
+    if (scores.net.player1 < scores.net.player2) {
         return `${player1.name} wins hole`;
     }
 
-    if (scores.player2 < scores.player1) {
+    if (scores.net.player2 < scores.net.player1) {
         return `${player2.name} wins hole`;
     }
 
-    return "Hole tied";
+    return "Hole halved";
 }
 
 function getH2HMatchPlayStatus(lastHoleIndex) {
@@ -1787,17 +1849,19 @@ function getH2HMatchPlayStatus(lastHoleIndex) {
     let player1Wins = 0;
     let player2Wins = 0;
 
-    h2hMatch.scores.forEach(function(scores, holeIndex) {
+    h2hMatch.scores.forEach(function(unusedScores, holeIndex) {
         if (holeIndex > lastHoleIndex) {
             return;
         }
 
-        if (scores.player1 === null || scores.player2 === null) {
+        const scores = getH2HMatchPlayHoleScores(holeIndex);
+
+        if (scores.net.player1 === null || scores.net.player2 === null) {
             return;
         }
 
-        if (scores.player1 < scores.player2) player1Wins++;
-        if (scores.player2 < scores.player1) player2Wins++;
+        if (scores.net.player1 < scores.net.player2) player1Wins++;
+        if (scores.net.player2 < scores.net.player1) player2Wins++;
     });
 
     const player1 = h2hMatch.players[0];
@@ -1830,8 +1894,15 @@ function renderH2HMatchScorecard() {
 
     h2hMatch.holes.forEach(function(hole, holeIndex) {
         const scores = h2hMatch.scores[holeIndex];
+        const matchScores = getH2HMatchPlayHoleScores(holeIndex);
         const player1Score = scores.player1 === null ? "-" : scores.player1;
         const player2Score = scores.player2 === null ? "-" : scores.player2;
+        const player1Net = matchScores.net.player1 === null
+            ? "-"
+            : matchScores.net.player1;
+        const player2Net = matchScores.net.player2 === null
+            ? "-"
+            : matchScores.net.player2;
         const holeDiv = document.createElement("div");
 
         holeDiv.className = "scorecard-hole h2h-match-hole";
@@ -1863,6 +1934,10 @@ function renderH2HMatchScorecard() {
                 <div class="h2h-current-hole-result">
                     <strong>Current Hole Result:</strong>
                     <span>${getH2HMatchPlayHoleResult(holeIndex)}</span>
+                    <div class="h2h-net-breakdown">
+                        <span>${player1.name}: Gross ${player1Score} • Strokes ${matchScores.strokes.player1} • Net ${player1Net}</span>
+                        <span>${player2.name}: Gross ${player2Score} • Strokes ${matchScores.strokes.player2} • Net ${player2Net}</span>
+                    </div>
                     <span>Match: ${getH2HMatchPlayStatus(holeIndex)}</span>
                 </div>
             </div>
@@ -1946,15 +2021,14 @@ function saveH2HMatch() {
 }
 
 function getH2HStrokesForHole(playerHci, hole) {
-    const holeCount = h2hMatch ? h2hMatch.holeCount : 18;
+    if (!h2hMatch) return 0;
 
-    let matchHci = Number(playerHci) || 0;
+    const strokes = getH2HMatchPlayStrokesForHole(hole);
+    const player1Hci = Number(h2hMatch.players[0].hci) || 0;
 
-    if (holeCount === 9) {
-        matchHci = Math.round(matchHci / 2);
-    }
-
-    return getStrokesForHole(hole.hcp, matchHci);
+    return (Number(playerHci) || 0) === player1Hci
+        ? strokes.player1
+        : strokes.player2;
 }
 
 function getH2HHoleResultText(holeIndex) {

@@ -625,14 +625,14 @@ function verifyCoreDomSmoke(indexHtml, scriptSources) {
     );
 
     harness.document.getElementById("h2hOpponentName").value = "Mike";
-    harness.document.getElementById("h2hOpponentHci").value = "12.4";
+    harness.document.getElementById("h2hOpponentHci").value = "7";
     evaluate("startH2HHoleByHole(9)");
     assert(
         !harness.document.getElementById("h2hMatchScreen").classList.contains("hidden") &&
         evaluate(
             "h2hMatch.holes.length === 9 && " +
             "h2hMatch.players[1].name === 'Mike' && " +
-            "h2hMatch.players[1].hci === 12.4"
+            "h2hMatch.players[1].hci === 7"
         ),
         "H2H: 9-hole match scorecard starts from setup inputs"
     );
@@ -657,21 +657,39 @@ function verifyCoreDomSmoke(indexHtml, scriptSources) {
         "adjustH2HScore('player1', 1, 0); " +
         "adjustH2HScore('player1', -1, 0); " +
         "adjustH2HScore('player1', 1, 0); " +
-        "adjustH2HScore('player2', 1, 0); " +
+        "adjustH2HScore('player1', 1, 0); " +
         "adjustH2HScore('player2', 1, 0)"
     );
     h2hFirstHole = harness.document.getElementById("h2hMatchGrid").children[0];
     assert(
         evaluate(
-            "h2hMatch.scores[0].player1 === h2hMatch.holes[0].par && " +
-            "h2hMatch.scores[0].player2 === h2hMatch.holes[0].par + 1"
+            "h2hMatch.scores[0].player1 === 6 && " +
+            "h2hMatch.scores[0].player2 === 5"
         ),
         "H2H: scorecard-style plus/minus controls update both players"
     );
     assert(
+        evaluate(
+            "getH2HMatchPlayStrokesForHole(h2hMatch.holes[0]).player1 === 1 && " +
+            "getH2HMatchPlayStrokesForHole(h2hMatch.holes[0]).player2 === 0 && " +
+            "getH2HNetScore(6, 1) === 5"
+        ),
+        "H2H net: higher HCI receives the difference and lower HCI is scratch"
+    );
+    assert(
+        h2hFirstHole.innerHTML.includes("Hole halved") &&
+        h2hFirstHole.innerHTML.includes("Gross 6 • Strokes 1 • Net 5") &&
+        h2hFirstHole.innerHTML.includes("Gross 5 • Strokes 0 • Net 5") &&
+        harness.document.getElementById("h2hMatchStatus").textContent === "All Square",
+        "H2H net: equal net scores halve the hole and keep the match All Square"
+    );
+
+    evaluate("adjustH2HScore('player2', 1, 0)");
+    h2hFirstHole = harness.document.getElementById("h2hMatchGrid").children[0];
+    assert(
         h2hFirstHole.innerHTML.includes("G-Well wins hole") &&
         harness.document.getElementById("h2hMatchStatus").textContent === "G-Well 1 Up",
-        "H2H: current-hole result and top match summary update immediately"
+        "H2H net: net hole winner updates the running match status"
     );
     assert(
         storage.has("gstH2HMatch"),

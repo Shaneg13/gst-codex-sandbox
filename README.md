@@ -103,9 +103,9 @@ Head-to-Head provides two independent flows:
 
 Opening Head-to-Head goes directly to New Match Setup. Compare Gross and Net Scores remains available from setup and the Head-to-Head mode picker.
 
-The match-play scorecard reuses the regular Scorecard Mode layout classes for hole number, par, yards, HCP, tee, and `+`/`−` score controls. Each hole displays `Current Hole Result:` and the gross match status. The summary at the top displays both player names and the current lead or `All Square`.
+The match-play scorecard reuses the regular Scorecard Mode layout classes for hole number, par, yards, HCP, tee, and `+`/`−` gross-score controls. Each hole displays `Current Hole Result:`, both players' gross score, strokes received, net score, and the net match status. The summary at the top displays both player names and the current lead or `All Square`.
 
-This first match-play pass uses **gross hole scores** to decide each hole and the match lead. Opponent HCI is collected for future net match-play support but does not change the gross match result. Net match-play scoring is intentionally deferred; the existing gross/net comparison continues to provide net-score comparison behavior.
+Hole-by-Hole Match uses **net scores** to decide each hole and the running match. The lower-HCI player plays scratch. The higher-HCI player receives the HCI difference, allocated by each hole's HCP/stroke index. Net score is `gross score - strokes received`. The separate Compare Gross and Net Scores flow remains unchanged.
 
 The existing `gstH2HMatch` LocalStorage key is still updated for compatibility, but H2H matches are not added to Recent Rounds and no match-history feature has been added. No new H2H LocalStorage key was introduced.
 
@@ -121,7 +121,7 @@ The verifier checks every JavaScript file with `node --check`, validates script 
 
 Field-test verification also covers active-round autosave, refresh and Continue restoration, current-hole restoration, incomplete-save blocking, abandon isolation, corrupted active data, and migration from legacy scorecard progress.
 
-Head-to-Head verification covers setup defaults, opponent inputs, 9-hole match creation, reused Scorecard Mode layout, both players' controls, gross hole results, match summary updates, and the existing gross/net comparison.
+Head-to-Head verification covers setup defaults, opponent inputs, 9-hole match creation, reused Scorecard Mode layout, both players' controls, relative stroke allocation, gross-to-net calculation, halved holes, net match summary updates, and the existing gross/net comparison.
 
 No npm install or build step is required. A failed check exits with a nonzero status and prints the failing condition.
 
