@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Golf Shot Tracker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- iPhone Home Screen shortcut icon -->
+    <link rel="apple-touch-icon" href="golfshottrackericon.png?v=2">
+
+    <!-- Optional browser tab icon -->
+    <link rel="icon" type="image/png" href="golfshottrackericon.png?v=2">
+
+    <link rel="stylesheet" href="style.css?v=14">
+</head>
+
+<body>
+<div id="splashScreen">
+    <img src="golfshottracker.png?v=12" alt="Golf Shot Tracker Loading Screen">
+
+    <div class="loading-circle"></div>
+</div>
+
+<div class="app-header">
+    <h1>
+        <img src="gstbanner.png" alt="GST" class="app-header-logo">
+    </h1>
+</div>
+
+<div class="card" id="homeCard">
+
+    <div class="home-grid">
+
+<div class="home-tile primary" onclick="showRoundModePopup()">
+    <h3>Start Round</h3>
+    <p>Begin a new golf round</p>
+</div>
+
+<div class="home-tile" onclick="continueRound()">
+            <h3>Continue</h3>
+            <p>Resume active round</p>
+        </div>
+
+<div class="home-tile" onclick="showStats()">
+    <h3>Stats</h3>
+    <p>Club averages and trends</p>
+</div>
+
+<div class="home-tile" onclick="showRecentRounds()">
+            <h3>Recent Rounds</h3>
+            <p>View saved rounds</p>
+        </div>
+
+<div class="home-tile" onclick="showCourseInfo()">
+    <h3>Courses</h3>
+    <p>Course info and tee data</p>
+</div>
+        
+<div class="home-tile" onclick="updateHci()">
+    <h3>Handicap Index</h3>
+    <p id="hciDisplay">--</p>
+    <span>Tap to update</span>
+</div>
+
+<div class="home-tile" onclick="showHeadToHead()">
+    <h3>Head-to-Head</h3>
+    <p>Net score battle</p>
+</div>
+</div>
+
+</div>
+<div class="card" id="roundSetupCard">
+    <h2>Round Setup</h2>
+
+    <label>Course</label>
+    <input id="courseInput" placeholder="Whitinsville GC">
+
+    <label>Round Date</label>
+    <input id="dateInput" type="date">
+
+    <button onclick="saveRound()">Save Round</button>
+    <button onclick="continueRound()">Continue Existing Round</button>
+    <button onclick="goHome()">Back Home</button>
+</div>
+
+<div class="card" id="shotTrackerCard">
+<h2 id="roundTitle">No Round Started</h2>
+
+
+<div class="hole-header">
+    <h3>Current Hole: <span id="currentHole">1</span></h3>
+
+    <button onclick="goHome()">Home</button>
+    <button onclick="previousHole()">Previous Hole</button>
+    <button onclick="nextHole()">Next Hole</button>
+
+</div>
+
+    <label>Club</label>
+<select id="clubInput">
+    <option value="Driver" data-loft="9°">Driver - 9°</option>
+    <option value="3 Wood" data-loft="15°">3 Wood - 15°</option>
+    <option value="3 Hybrid" data-loft="18°">3 Hybrid - 18°</option>
+    <option value="5 Iron" data-loft="21°">5 Iron - 21°</option>
+    <option value="6 Iron" data-loft="24°">6 Iron - 24°</option>
+    <option value="7 Iron" data-loft="28°">7 Iron - 28°</option>
+    <option value="8 Iron" data-loft="32°">8 Iron - 32°</option>
+    <option value="9 Iron" data-loft="37°">9 Iron - 37°</option>
+    <option value="PW" data-loft="43°">PW - 43°</option>
+    <option value="AW" data-loft="49°">AW - 49°</option>
+    <option value="56" data-loft="56°">56 - 56°</option>
+    <option value="60" data-loft="60°">60 - 60°</option>
+    <option value="Putter" data-loft="">Putter</option>
+</select>
+
+    <label>Distance</label>
+    <input id="distanceInput" placeholder="154">
+<label>Result</label>
+<select id="resultInput">
+    <option value="Good">Good</option>
+    <option value="Left">Left</option>
+    <option value="Right">Right</option>
+    <option value="Short">Short</option>
+    <option value="Long">Long</option>
+    <option value="Green">Green</option>
+    <option value="Fairway">Fairway</option>
+    <option value="Penalty">Penalty</option>
+</select>
+
+<label>Lie</label>
+<select id="lieInput">
+    <option value="Tee">Tee</option>
+    <option value="Fairway">Fairway</option>
+    <option value="Rough">Rough</option>
+    <option value="Sand">Sand</option>
+    <option value="Recovery">Recovery</option>
+    <option value="Green">Green</option>
+</select>
+<label>Par</label>
+<input id="parInput" type="number" placeholder="4">
+        <label>Hole Score</label>
+        <input id="scoreInput" type="number" placeholder="5">
+<button onclick="saveShot()">Save Shot</button>
+<button onclick="saveHole()">Save Hole Score</button>
+
+<button onclick="showStats()">Show Stats</button>
+<button onclick="exportShots()">Export Data</button>
+<button onclick="clearShots()">Clear Shots</button>
+
+</div>
+
+<div class="card" id="summaryCard">
+    <h2>Round Summary</h2>
+    <p>Course: <span id="summaryCourse">None</span></p>
+    <p>Date: <span id="summaryDate">None</span></p>
+    <p>Current Hole: <span id="summaryHole">1</span></p>
+    <p>Shots Recorded: <span id="summaryShots">0</span></p>
+</div>
+
+<div class="card" id="scorecardCard">
+    <h2>Scorecard</h2>
+
+    <div id="scorecardList"></div>
+
+    <h3>Round Totals</h3>
+    <p>Total Par: <span id="totalPar">0</span></p>
+    <p>Total Score: <span id="totalScore">0</span></p>
+    <p>Round Status: <span id="roundStatus">E</span></p>
+</div>
+
+<div class="card" id="recentShotsCard">
+    <h2>Recent Shots</h2>
+    <div id="shotList"></div>
+</div>
+
+<div id="statsScreen" class="card hidden">
+
+    <h2>Stats</h2>
+    <p class="section-subtitle">Scoring trends by hole</p>
+
+    <div class="stats-mode-row">
+        <button class="stats-tab active-tab">
+            Hole Averages
+        </button>
+
+        <button class="stats-tab disabled-tab">
+            Club Stats Later
+        </button>
+    </div>
+
+    <div id="holeAverageStatsList" class="hole-average-stats-list"></div>
+
+    <button onclick="showHome()" class="secondary-button">
+        Back Home
+    </button>
+
+</div>
+
+<div id="scorecardScreen" class="card hidden">
+
+    <h2>Scorecard</h2>
+    <p class="section-subtitle">Track score by hole</p>
+
+    <div id="scorecardGrid" class="scorecard-grid"></div>
+
+    <div class="scorecard-summary">
+        <div>
+            <span>Total Score</span>
+            <strong id="scorecardTotalScore">0</strong>
+        </div>
+
+        <div>
+            <span>To Par</span>
+            <strong id="scorecardToPar">E</strong>
+        </div>
+    </div>
+
+    <button onclick="saveScorecardRound()" class="primary-button">
+        Save Round
+    </button>
+
+    <button onclick="showHome()" class="secondary-button">
+        Back Home
+    </button>
+
+</div>
+
+<div id="recentRoundsScreen" class="card hidden">
+
+    <h2>Recent Rounds</h2>
+    <p class="section-subtitle">Saved scorecard rounds</p>
+
+    <button onclick="showPastRoundEntry()" class="primary-button">
+        Add Round
+    </button>
+
+    <div id="recentRoundsList" class="recent-rounds-list"></div>
+
+    <button onclick="showHome()" class="secondary-button">
+        Back Home
+    </button>
+
+</div>
+
+<div id="pastRoundScreen" class="card hidden">
+
+    <h2>Add Past Round</h2>
+    <p class="section-subtitle">Enter an old scorecard manually</p>
+
+    <label>Round Date</label>
+    <input id="pastRoundDateInput" type="date">
+
+    <label>HCI Used</label>
+    <input id="pastRoundHciInput" type="number" step="0.1" placeholder="26.4">
+
+    <div class="past-round-actions">
+        <button onclick="setupPastRound(9)">9 Holes</button>
+        <button onclick="setupPastRound(18)">18 Holes</button>
+    </div>
+
+    <div id="pastRoundGrid" class="scorecard-grid"></div>
+
+    <button onclick="savePastRound()" class="primary-button">
+        Save Past Round
+    </button>
+
+    <button onclick="showRecentRounds()" class="secondary-button">
+        Back to Recent Rounds
+    </button>
+
+</div>
+
+<div id="courseInfoScreen" class="card hidden">
+
+    <h2>Course Info</h2>
+    <p class="section-subtitle">Default course and tee setup</p>
+
+    <div class="course-info-card">
+        <h3 id="courseInfoName">Whitinsville Golf Club</h3>
+
+        <div class="course-info-row">
+            <span>Default Course</span>
+            <strong id="courseInfoDefault">Yes</strong>
+        </div>
+
+        <div class="course-info-row">
+            <span>Course Layout</span>
+            <strong>9-hole course</strong>
+        </div>
+
+        <div class="course-info-row">
+            <span>9-Hole Round</span>
+            <strong>White tees</strong>
+        </div>
+
+        <div class="course-info-row">
+            <span>18-Hole Round</span>
+            <strong>Front 9 White / Back 9 Blue</strong>
+        </div>
+
+<div class="course-info-row">
+    <span>Front 9 Tee</span>
+    <strong id="courseInfoFrontNine">White - Par -</strong>
+</div>
+
+<div class="course-info-row">
+    <span>Back 9 Tee</span>
+    <strong id="courseInfoBackNine">Blue - Par -</strong>
+</div>
+
+        <div class="course-info-row">
+            <span>Total Par</span>
+            <strong id="courseInfoTotalPar">-</strong>
+        </div>
+    </div>
+
+    <button onclick="showHome()" class="secondary-button">
+        Back Home
+    </button>
+
+</div>
+
+<div id="headToHeadScreen" class="card hidden">
+
+    <div class="screen-header">
+        <h2>Head-to-Head</h2>
+    </div>
+
+    <div id="h2hModePicker" class="h2h-mode-picker">
+
+        <button class="h2h-mode-card" onclick="openH2HHoleByHole()">
+            <span class="mode-title">Hole-by-Hole Match</span>
+            <span class="mode-subtitle">Track both players live like a scorecard</span>
+        </button>
+
+        <button class="h2h-mode-card" onclick="openH2HCompare()">
+            <span class="mode-title">Compare Gross and Net Scores</span>
+            <span class="mode-subtitle">Use the current gross/net score comparison</span>
+        </button>
+
+    </div>
+
+    <div id="h2hHoleByHolePanel" style="display: none;">
+
+        <h3>Hole-by-Hole Match</h3>
+
+        <div class="match-card">
+            <label>Your Name</label>
+            <input id="h2hPlayerName" type="text" value="G-Well">
+
+            <label>Your HCI</label>
+            <input id="h2hPlayerHci" type="number" step="0.1">
+
+            <label>Opponent Name</label>
+            <input id="h2hOpponentName" type="text" placeholder="Opponent">
+
+            <label>Opponent HCI</label>
+            <input id="h2hOpponentHci" type="number" step="0.1">
+
+            <div class="button-row">
+                <button onclick="startH2HHoleByHole(9)">Start 9 Holes</button>
+                <button onclick="startH2HHoleByHole(18)">Start 18 Holes</button>
+            </div>
+        </div>
+
+        <div id="h2hActiveMatch" style="display: none;">
+            <div id="h2hHoleDisplay"></div>
+        </div>
+
+        <button onclick="showH2HModePicker()" class="secondary-button">
+            Back to Head-to-Head
+        </button>
+
+    </div>
+
+    <div id="h2hComparePanel" style="display: none;">
+
+        <h3>Compare Gross and Net Scores</h3>
+        <p class="section-subtitle">Compare gross and net scores</p>
+
+        <div class="match-card">
+            <h3>Player 1</h3>
+
+            <div class="course-info-row">
+                <span>Name</span>
+                <strong id="playerOneNameDisplay">G-Well</strong>
+            </div>
+
+            <div class="course-info-row">
+                <span>HCI</span>
+                <strong id="headToHeadPlayerOneHci">--</strong>
+            </div>
+
+            <label>Gross Score</label>
+            <input id="playerOneGrossInput" type="number" placeholder="92">
+        </div>
+
+        <div class="match-card">
+            <h3>Player 2</h3>
+
+            <label>Name</label>
+            <input id="playerTwoNameInput" placeholder="Buddy">
+
+            <label>HCI</label>
+            <input id="playerTwoHciInput" type="number" step="0.1" placeholder="18.0">
+
+            <label>Gross Score</label>
+            <input id="playerTwoGrossInput" type="number" placeholder="88">
+        </div>
+
+        <label>Match Length</label>
+        <select id="headToHeadHoleCount">
+            <option value="18">18 Holes</option>
+            <option value="9">9 Holes</option>
+        </select>
+
+        <button onclick="calculateHeadToHead()" class="primary-button">
+            Calculate Match
+        </button>
+
+        <div id="headToHeadResult" class="match-result hidden"></div>
+
+        <button onclick="showH2HModePicker()" class="secondary-button">
+            Back to Head-to-Head
+        </button>
+
+    </div>
+
+    <button onclick="showHome()" class="secondary-button">
+        Back Home
+    </button>
+
+</div>
+
+<div id="roundDetailScreen" class="card hidden">
+
+    <h2>Round Detail</h2>
+    <p class="section-subtitle" id="roundDetailDate">Saved round</p>
+
+    <div id="roundDetailList" class="round-detail-list"></div>
+
+<div class="scorecard-summary round-detail-summary">
+    <div>
+        <span>Total Score</span>
+        <strong id="roundDetailTotalScore">0</strong>
+    </div>
+
+    <div>
+        <span>To Par</span>
+        <strong id="roundDetailToPar">E</strong>
+    </div>
+
+    <div class="net-score-card">
+        <span>Net Score</span>
+        <strong id="roundDetailNetScore">-</strong>
+    </div>
+    </div>
+
+    <button onclick="showRecentRounds()" class="secondary-button">
+        Back to Recent Rounds
+    </button>
+
+    <button onclick="showHome()" class="secondary-button">
+        Back Home
+    </button>
+
+</div>
+
+<script src="app.js?v=14"></script>
+
+<div id="roundModePopup" class="modal hidden">
+    <div class="modal-content round-mode-modal">
+
+        <h2>Start Round</h2>
+        <p class="modal-subtitle">Choose how you want to track today.</p>
+
+        <button class="mode-option" onclick="startScorecardMode()">
+            <strong>Scorecard</strong>
+            <span>Track score by hole</span>
+        </button>
+
+        <button class="mode-option" onclick="startShotTrackingMode()">
+            <strong>Shot Tracking</strong>
+            <span>Shot by shot tracking</span>
+        </button>
+
+        <button class="secondary-button" onclick="closeRoundModePopup()">
+            Cancel
+        </button>
+
+    </div>
+</div>
+
+<div id="holeCountPopup" class="modal hidden">
+    <div class="modal-content round-mode-modal">
+
+        <h2>Scorecard</h2>
+        <p class="modal-subtitle">Whitinsville Golf Club</p>
+
+        <button class="mode-option" onclick="startScorecardRound(9)">
+            <strong>9 Holes</strong>
+            <span>White tees</span>
+        </button>
+
+        <button class="mode-option" onclick="startScorecardRound(18)">
+            <strong>18 Holes</strong>
+            <span>Front 9 White, Back 9 Blue</span>
+        </button>
+
+        <button class="secondary-button" onclick="closeHoleCountPopup()">
+            Cancel
+        </button>
+
+    </div>
+</div>
+
+</body>
+</html>
