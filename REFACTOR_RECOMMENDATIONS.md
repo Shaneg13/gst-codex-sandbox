@@ -1,0 +1,153 @@
+# Golf Shot Tracker Refactor Recommendations
+
+## Table of Contents
+
+1. [Purpose and Constraints](#purpose-and-constraints)
+2. [Executive Summary](#executive-summary)
+3. [Current Architecture](#current-architecture)
+4. [Review Findings](#review-findings)
+5. [Safe Refactors for This Pass](#safe-refactors-for-this-pass)
+6. [Deferred Recommendations](#deferred-recommendations)
+7. [Verification Strategy](#verification-strategy)
+8. [Important Logic and Data Contracts](#important-logic-and-data-contracts)
+9. [Lessons for Future Development](#lessons-for-future-development)
+
+## Purpose and Constraints
+
+This report documents the maintainability review completed before refactoring the current static Golf Shot Tracker application. The application must continue to run directly on GitHub Pages with no build step.
+
+This refactor must preserve:
+
+- All current features, user flows, copy, scoring behavior, and Head-to-Head behavior.
+- The dark GST visual theme and the `Beta Testing` home-screen easter egg.
+- Existing LocalStorage keys and stored data structures.
+- Direct browser execution through `index.html`, `style.css`, and `app.js`.
+
+## Executive Summary
+
+The application is functional but concentrated in one global JavaScript file. Feature code, persistence, rendering, navigation, initialization, and course data share the same scope. This is workable for a small static app, but it increases the chance that a change in one feature will affect another.
+
+The safest immediate improvements are documentation, defensive LocalStorage parsing, small shared persistence helpers, centralized screen visibility helpers, an explicit initialization entry point, and clear feature section boundaries. Larger changes—modules, state containers, data migrations, or generalized scorecard engines—should wait until automated behavior tests exist.
+
+## Current Architecture
+
+- `index.html` contains every screen, modal, input, and inline event handler.
+- `style.css` contains the complete dark GST theme and responsive rules.
+- `app.js` contains course data, global state, persistence, rendering, navigation, scorecard entry, past-round entry, recent rounds, course information, player profile, Head-to-Head, exports, statistics, and startup behavior.
+- Browser LocalStorage is the only persistence layer.
+- Functions are exposed globally because HTML invokes them through inline handlers.
+
+## Review Findings
+
+### 1. Code Organization
+
+Related functions are not consistently grouped. Startup statements appear in multiple locations, and shared utilities are mixed with feature logic. Section comments and an explicit initialization function will make feature boundaries easier to find without changing the static architecture.
+
+### 2. Duplicate or Repeated Logic
+
+The live scorecard and past-round scorecard repeat hole creation, score adjustment, rendering, totals, and save preparation. Screen show/hide code and saved-round reads are also repeated. Only small, behavior-obvious repetitions should be consolidated in this pass.
+
+### 3. Large Functions
+
+`renderRecentRounds`, `renderRoundDetail`, `calculateHeadToHead`, `renderH2HHole`, and `renderHoleAverageStats` combine data preparation with DOM rendering. They are candidates for later separation into calculation and rendering helpers, but changing them now would carry unnecessary regression risk without automated tests.
+
+### 4. LocalStorage Safety
+
+Several values are parsed directly with `JSON.parse`. A malformed or manually edited value can stop application startup or break a feature screen. A shared parser should return the existing fallback value on invalid JSON while leaving every key and valid stored structure unchanged.
+
+Current keys that form compatibility contracts include:
+
+- `currentHole`
+- `currentRound`
+- `shots`
+- `holes`
+- `selectedCourseId`
+- `savedScorecardRounds`
+- `roundMode`
+- `simpleScorecard`
+- `scorecardHoleCount`
+- `gstPlayerProfile`
+- `gstH2HMatch`
+
+### 5. State Management
+
+Mutable globals such as `currentRound`, `shots`, `holes`, `simpleScorecard`, `pastRoundScorecard`, `playerProfile`, and `h2hMatch` are shared across features. This makes dependencies implicit. A future state object could clarify ownership, but introducing one now would touch most functions and is not a low-risk change.
+
+### 6. Navigation and Screen Handling
+
+`hideAllScreens` centralizes part of navigation, while `showRoundSetup` and `continueRound` manually set several display values. Head-to-Head panels use another visibility pattern. Small helpers can standardize direct display and hidden-class operations while preserving the exact current values.
+
+### 7. Scorecard and Head-to-Head Separation
+
+Scorecard, past-round entry, and Head-to-Head logic are identifiable feature areas but remain interleaved in one file and depend on shared course/profile globals. Clear section boundaries are appropriate now. File/module separation should wait for browser-based regression coverage.
+
+### 8. Course Data Structure
+
+Course data is embedded in JavaScript and uses separate `whiteTees` and `blueTees` arrays. Existing logic assumes Whitinsville front-nine white tees and back-nine blue tees. The data is sufficient for the current app but not ready for arbitrary courses, tee sets, or multiple routing combinations. Changing it now would affect scoring and saved-round behavior.
+
+### 9. Stats Readiness
+
+Statistics are computed directly from `savedScorecardRounds` during rendering. The calculation currently supports hole averages and trends but lacks a versioned data boundary, validation, and reusable selectors. Future stats work should first extract pure calculation functions and add fixture-based tests.
+
+### 10. Future Development Readiness
+
+The project has no automated tests, lint configuration, formatting configuration, or documented data schema. The app should remain build-free for GitHub Pages, but lightweight browser tests and pure JavaScript logic tests can still be added later without changing deployment.
+
+### 11. Fragile Areas
+
+- Direct JSON parsing can block startup.
+- Inline HTML handlers require existing global function names to remain stable.
+- Rendering uses template-string `innerHTML`, so future user-entered content needs careful escaping.
+- Navigation mixes inline `display` changes with the `hidden` class.
+- Course and handicap calculations rely on embedded assumptions that are not documented in code.
+- Multiple scorecard workflows can drift if future fixes are applied to only one path.
+
+## Safe Refactors for This Pass
+
+The current pass should be limited to:
+
+1. Add section comments for utilities, data/state, each feature area, navigation, and initialization.
+2. Add a defensive LocalStorage JSON reader that preserves existing fallbacks.
+3. Add saved-round read/write helpers while retaining `savedScorecardRounds` exactly.
+4. Add small DOM visibility helpers and reuse them where the existing behavior is explicit.
+5. Wrap existing startup statements in a named initialization function without changing their order.
+6. Normalize formatting only where code is already being touched.
+
+## Deferred Recommendations
+
+1. Add automated tests for scoring, handicap strokes, Head-to-Head results, saved-round rendering, and corrupted LocalStorage.
+2. Extract pure calculation helpers from rendering functions.
+3. Define and document versioned schemas for saved rounds, shots, holes, player profiles, and Head-to-Head matches.
+4. Consolidate live and past scorecard construction behind tested shared helpers.
+5. Replace inline handlers with registered event listeners only after browser tests protect the current flow.
+6. Split feature code into build-free classic scripts or ES modules only after GitHub Pages compatibility is tested across target browsers.
+7. Add safe text-rendering helpers before expanding user-editable names or course data.
+8. Add a repository test command and CI workflow after the first test suite exists.
+
+## Verification Strategy
+
+For this behavior-preserving pass:
+
+1. Run `node --check app.js`.
+2. Check the Git diff for whitespace and accidental copy/theme changes.
+3. Confirm every HTML `src` and `href` asset exists.
+4. Serve the repository through a local static HTTP server.
+5. Confirm `index.html`, `app.js`, `style.css`, and all PNG assets return HTTP 200.
+6. Confirm the served page contains the home screen and `Beta Testing` label.
+7. Confirm the final commit contains only the intended refactor and documentation.
+
+## Important Logic and Data Contracts
+
+- LocalStorage key names are public compatibility contracts for existing browser data.
+- Saved-round objects and their nested `holes` arrays must remain structurally unchanged unless a future migration is introduced.
+- Course hole numbers, par, yardage, tee, and handicap values feed scorecard, details, statistics, and Head-to-Head calculations.
+- Global function names referenced by `onclick` attributes are part of the current UI contract.
+- `hidden` class behavior and explicit `display` values jointly control navigation and must not be casually unified.
+
+## Lessons for Future Development
+
+- Protect behavior with tests before reorganizing feature boundaries.
+- Treat persisted browser data as an API: keep keys and shapes stable or migrate them explicitly.
+- Keep calculations independent from rendering when adding new statistics.
+- Prefer small helpers that make existing behavior explicit over broad rewrites.
+- Verify static hosting continuously; build-free deployment is a project requirement, not an implementation detail.

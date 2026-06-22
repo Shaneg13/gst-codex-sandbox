@@ -1,16 +1,14 @@
+// ============================================================
+// Persistent application state
+// ============================================================
+
 let currentHole = Number(localStorage.getItem("currentHole")) || 1;
 
-let currentRound = JSON.parse(
-    localStorage.getItem("currentRound")
-) || null;
+let currentRound = readStoredJson("currentRound", null);
 
-let shots = JSON.parse(
-    localStorage.getItem("shots")
-) || [];
+let shots = readStoredJson("shots", []);
 
-let holes = JSON.parse(
-    localStorage.getItem("holes")
-) || [];
+let holes = readStoredJson("holes", []);
 
 let playerProfile = {
     name: "G-Well",
@@ -18,6 +16,10 @@ let playerProfile = {
 };
 
 let pastRoundScorecard = [];
+
+// ============================================================
+// Course data
+// ============================================================
 
 const courses = {
     whitinsville: {
@@ -55,6 +57,60 @@ const SAVED_ROUNDS_KEY = "savedScorecardRounds";
 
 let selectedCourseId =
     localStorage.getItem("selectedCourseId") || "whitinsville";
+
+// ============================================================
+// Shared storage and DOM helpers
+// ============================================================
+
+/**
+ * Read JSON from LocalStorage without allowing malformed browser data to
+ * prevent the app from loading. Valid stored values and existing key names
+ * remain unchanged.
+ */
+function readStoredJson(key, fallbackValue) {
+    const storedValue = localStorage.getItem(key);
+
+    if (storedValue === null) {
+        return fallbackValue;
+    }
+
+    try {
+        return JSON.parse(storedValue) || fallbackValue;
+    } catch (error) {
+        console.warn(`Could not read LocalStorage key "${key}":`, error);
+        return fallbackValue;
+    }
+}
+
+function getSavedRounds() {
+    return readStoredJson(SAVED_ROUNDS_KEY, []);
+}
+
+function saveSavedRounds(savedRounds) {
+    localStorage.setItem(SAVED_ROUNDS_KEY, JSON.stringify(savedRounds));
+}
+
+function setElementDisplay(elementId, displayValue) {
+    const element = document.getElementById(elementId);
+
+    if (element) {
+        element.style.display = displayValue;
+    }
+}
+
+function setElementHidden(elementId, shouldHide) {
+    const element = document.getElementById(elementId);
+
+    if (!element) {
+        return;
+    }
+
+    element.classList.toggle("hidden", shouldHide);
+}
+
+// ============================================================
+// Shot-tracking round and hole flow
+// ============================================================
 
 function updateHoleDisplay() {
     document.getElementById("currentHole").textContent = currentHole;
@@ -232,12 +288,11 @@ function deleteRound(roundId) {
         return;
     }
 
-    let savedRounds =
-        JSON.parse(localStorage.getItem(SAVED_ROUNDS_KEY)) || [];
+    let savedRounds = getSavedRounds();
 
     savedRounds = savedRounds.filter(round => round.id !== roundId);
 
-    localStorage.setItem(SAVED_ROUNDS_KEY, JSON.stringify(savedRounds));
+    saveSavedRounds(savedRounds);
 
     showRecentRounds();
 }
@@ -429,7 +484,7 @@ function renderShots() {
 function goHome() {
     hideAllScreens();
 
-    document.getElementById("homeCard").style.display = "block";
+    setElementDisplay("homeCard", "block");
 }
 
 if (currentRound) {
@@ -440,6 +495,10 @@ if (currentRound) {
         currentRound.date;
 
 }
+
+// ============================================================
+// Simple scorecard flow
+// ============================================================
 
 let simpleScorecard = [];
 
@@ -515,7 +574,7 @@ function getDefaultPar(holeNumber) {
 function showScorecardScreen() {
     hideAllScreens();
 
-    document.getElementById("scorecardScreen").classList.remove("hidden");
+    setElementHidden("scorecardScreen", false);
 }
 
 function renderSimpleScorecard() {
@@ -606,7 +665,7 @@ function saveSimpleScorecardProgress() {
 }
 
 function saveScorecardRound() {
-    const savedRounds = JSON.parse(localStorage.getItem("savedScorecardRounds")) || [];
+    const savedRounds = getSavedRounds();
 
 const round = {
     id: Date.now(),
@@ -624,7 +683,7 @@ const round = {
 
     savedRounds.push(round);
 
-    localStorage.setItem("savedScorecardRounds", JSON.stringify(savedRounds));
+    saveSavedRounds(savedRounds);
     localStorage.removeItem("simpleScorecard");
 
     alert("Scorecard round saved.");
@@ -633,68 +692,42 @@ const round = {
 }
 
 function hideAllScreens() {
-    document.getElementById("homeCard").style.display = "none";
-    document.getElementById("roundSetupCard").style.display = "none";
-    document.getElementById("shotTrackerCard").style.display = "none";
-    document.getElementById("summaryCard").style.display = "none";
-    document.getElementById("scorecardCard").style.display = "none";
-    document.getElementById("recentShotsCard").style.display = "none";
+    const cardScreenIds = [
+        "homeCard",
+        "roundSetupCard",
+        "shotTrackerCard",
+        "summaryCard",
+        "scorecardCard",
+        "recentShotsCard"
+    ];
 
-    const scorecardScreen =
-        document.getElementById("scorecardScreen");
+    const hiddenClassScreenIds = [
+        "scorecardScreen",
+        "recentRoundsScreen",
+        "roundDetailScreen",
+        "courseInfoScreen",
+        "pastRoundScreen",
+        "statsScreen",
+        "headToHeadScreen"
+    ];
 
-    if (scorecardScreen) {
-        scorecardScreen.classList.add("hidden");
-    }
+    cardScreenIds.forEach(function(elementId) {
+        setElementDisplay(elementId, "none");
+    });
 
-    const recentRoundsScreen =
-        document.getElementById("recentRoundsScreen");
-
-    if (recentRoundsScreen) {
-        recentRoundsScreen.classList.add("hidden");
-    }
-
-    const roundDetailScreen =
-        document.getElementById("roundDetailScreen");
-
-    if (roundDetailScreen) {
-        roundDetailScreen.classList.add("hidden");
-    }
-
-    const courseInfoScreen =
-    document.getElementById("courseInfoScreen");
-
-if (courseInfoScreen) {
-    courseInfoScreen.classList.add("hidden");
+    hiddenClassScreenIds.forEach(function(elementId) {
+        setElementHidden(elementId, true);
+    });
 }
 
-const pastRoundScreen =
-    document.getElementById("pastRoundScreen");
-
-if (pastRoundScreen) {
-    pastRoundScreen.classList.add("hidden");
-}
-
-const statsScreen =
-    document.getElementById("statsScreen");
-
-if (statsScreen) {
-    statsScreen.classList.add("hidden");
-}
-
-const headToHeadScreen =
-    document.getElementById("headToHeadScreen");
-
-if (headToHeadScreen) {
-    headToHeadScreen.classList.add("hidden");
-}
-
-    }
+// ============================================================
+// Past-round entry and saved-round history
+// ============================================================
 
 function showRecentRounds() {
     hideAllScreens();
 
-    document.getElementById("recentRoundsScreen").classList.remove("hidden");
+    setElementHidden("recentRoundsScreen", false);
 
     renderRecentRounds();
 }
@@ -702,10 +735,7 @@ function showRecentRounds() {
 function showPastRoundEntry() {
     hideAllScreens();
 
-    const pastRoundScreen =
-        document.getElementById("pastRoundScreen");
-
-    pastRoundScreen.classList.remove("hidden");
+    setElementHidden("pastRoundScreen", false);
 
     document.getElementById("pastRoundDateInput").value = "";
 
@@ -878,8 +908,7 @@ function savePastRound() {
         return;
     }
 
-    const savedRounds =
-        JSON.parse(localStorage.getItem("savedScorecardRounds")) || [];
+    const savedRounds = getSavedRounds();
 
     const totalScore =
         pastRoundScorecard.reduce(function(sum, hole) {
@@ -901,10 +930,7 @@ function savePastRound() {
 
     savedRounds.push(round);
 
-    localStorage.setItem(
-        "savedScorecardRounds",
-        JSON.stringify(savedRounds)
-    );
+    saveSavedRounds(savedRounds);
 
     alert("Past round saved.");
 
@@ -917,8 +943,7 @@ function renderRecentRounds() {
 
     recentRoundsList.innerHTML = "";
 
-    const savedRounds =
-        JSON.parse(localStorage.getItem("savedScorecardRounds")) || [];
+    const savedRounds = getSavedRounds();
 
     if (savedRounds.length === 0) {
         recentRoundsList.innerHTML =
@@ -1016,10 +1041,7 @@ enableSwipeRevealDelete();
 function showRoundDetail(roundId) {
     hideAllScreens();
 
-    const roundDetailScreen =
-        document.getElementById("roundDetailScreen");
-
-    roundDetailScreen.classList.remove("hidden");
+    setElementHidden("roundDetailScreen", false);
 
     renderRoundDetail(roundId);
 }
@@ -1027,10 +1049,7 @@ function showRoundDetail(roundId) {
 function showCourseInfo() {
     hideAllScreens();
 
-    const courseInfoScreen =
-        document.getElementById("courseInfoScreen");
-
-    courseInfoScreen.classList.remove("hidden");
+    setElementHidden("courseInfoScreen", false);
 
     renderCourseInfo();
 }
@@ -1075,8 +1094,7 @@ document.getElementById("courseInfoTotalPar").textContent =
 }
 
 function renderRoundDetail(roundId) {
-    const savedRounds =
-        JSON.parse(localStorage.getItem("savedScorecardRounds")) || [];
+    const savedRounds = getSavedRounds();
 
     const round =
         savedRounds.find(function(savedRound) {
@@ -1271,22 +1289,14 @@ function getStrokesForHole(holeHandicap, handicapIndex) {
 }
 
 function loadPlayerProfile() {
-    const savedProfile = localStorage.getItem("gstPlayerProfile");
+    playerProfile = readStoredJson("gstPlayerProfile", {
+        hci: 26.4
+    });
 
-    if (savedProfile) {
-        try {
-            playerProfile = JSON.parse(savedProfile);
-        } catch (error) {
-            console.error("Could not load player profile:", error);
-
-            playerProfile = {
-                hci: 26.4
-            };
-        }
+    if (!playerProfile.name) {
+        playerProfile.name = "G-Well";
     }
-if (!playerProfile.name) {
-    playerProfile.name = "G-Well";
-}
+
     updateHciDisplay();
 }
 
@@ -1318,15 +1328,19 @@ function updateHci() {
         return;
     }
 
-playerProfile.hci = newHci;
+    playerProfile.hci = newHci;
 
-savePlayerProfile();
-updateHciDisplay();
+    savePlayerProfile();
+    updateHciDisplay();
 
 if (simpleScorecard.length > 0) {
     renderSimpleScorecard();
 }
 }
+
+// ============================================================
+// Recent-round swipe interactions
+// ============================================================
 
 function enableSwipeRevealDelete() {
     const swipeCards =
@@ -1395,14 +1409,14 @@ function closeAllSwipeCards(exceptCard) {
     });
 }
 
+// ============================================================
+// Head-to-Head feature
+// ============================================================
+
 function showHeadToHead() {
     hideAllScreens();
 
-    const screen = document.getElementById("headToHeadScreen");
-
-    if (screen) {
-        screen.classList.remove("hidden");
-    }
+    setElementHidden("headToHeadScreen", false);
 
     showH2HModePicker();
 }
@@ -1879,9 +1893,9 @@ function formatH2HLead(player1Name, player2Name, player1Wins, player2Wins) {
     return `${player2Name} +${Math.abs(diff)}`;
 }
 
-loadPlayerProfile();
-renderShots();
-updateSummary();
+// ============================================================
+// Shot data maintenance and export
+// ============================================================
 
 function clearShots() {
 
@@ -1924,25 +1938,17 @@ function exportShots() {
     URL.revokeObjectURL(url);
 }
 
+// ============================================================
+// Navigation and statistics
+// ============================================================
+
 function showRoundSetup() {
-
-    document.getElementById("roundSetupCard").style.display =
-        "block";
-
-    document.getElementById("shotTrackerCard").style.display =
-        "none";
-
-    document.getElementById("summaryCard").style.display =
-        "none";
-
-    document.getElementById("recentShotsCard").style.display =
-        "none";
-
-    document.getElementById("scorecardCard").style.display =
-        "none";
-
-    document.getElementById("homeCard").style.display =
-        "none";
+    setElementDisplay("roundSetupCard", "block");
+    setElementDisplay("shotTrackerCard", "none");
+    setElementDisplay("summaryCard", "none");
+    setElementDisplay("recentShotsCard", "none");
+    setElementDisplay("scorecardCard", "none");
+    setElementDisplay("homeCard", "none");
 }
 
 function continueRound() {
@@ -1952,23 +1958,12 @@ function continueRound() {
         return;
     }
 
-    document.getElementById("homeCard").style.display =
-        "none";
-
-    document.getElementById("roundSetupCard").style.display =
-        "none";
-
-    document.getElementById("shotTrackerCard").style.display =
-        "block";
-
-    document.getElementById("summaryCard").style.display =
-        "block";
-
-    document.getElementById("recentShotsCard").style.display =
-        "block";
-    
-    document.getElementById("scorecardCard").style.display =
-        "block";
+    setElementDisplay("homeCard", "none");
+    setElementDisplay("roundSetupCard", "none");
+    setElementDisplay("shotTrackerCard", "block");
+    setElementDisplay("summaryCard", "block");
+    setElementDisplay("recentShotsCard", "block");
+    setElementDisplay("scorecardCard", "block");
 
     updateHoleDisplay();
     renderShots();
@@ -1979,10 +1974,7 @@ function continueRound() {
 function showStats() {
     hideAllScreens();
 
-    const statsScreen =
-        document.getElementById("statsScreen");
-
-    statsScreen.classList.remove("hidden");
+    setElementHidden("statsScreen", false);
 
     renderHoleAverageStats();
 }
@@ -1993,8 +1985,7 @@ function renderHoleAverageStats() {
 
     statsList.innerHTML = "";
 
-    const savedRounds =
-        JSON.parse(localStorage.getItem("savedScorecardRounds")) || [];
+    const savedRounds = getSavedRounds();
 
     if (savedRounds.length === 0) {
         statsList.innerHTML =
@@ -2117,20 +2108,23 @@ function showHome() {
     goHome();
 }
 
-document.getElementById("roundSetupCard").style.display =
-    "none";
+// ============================================================
+// Application initialization
+// ============================================================
 
-document.getElementById("shotTrackerCard").style.display =
-    "none";
+function initializeApp() {
+    loadPlayerProfile();
+    renderShots();
+    updateSummary();
 
-document.getElementById("summaryCard").style.display =
-    "none";
+    setElementDisplay("roundSetupCard", "none");
+    setElementDisplay("shotTrackerCard", "none");
+    setElementDisplay("summaryCard", "none");
+    setElementDisplay("recentShotsCard", "none");
+    setElementDisplay("scorecardCard", "none");
+}
 
-document.getElementById("recentShotsCard").style.display =
-    "none";
-
-document.getElementById("scorecardCard").style.display =
-    "none";
+initializeApp();
 
 window.addEventListener("load", function() {
 
