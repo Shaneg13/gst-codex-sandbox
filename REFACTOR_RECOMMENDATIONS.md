@@ -159,6 +159,13 @@ For this behavior-preserving pass:
 3. Define an explicit one-active-round policy before allowing scorecard and shot-tracking rounds to coexist or switch without completion.
 4. Add a visible current-hole affordance only as a separately reviewed UI change; the current hardening pass preserves the existing layout.
 
+### Head-to-Head Match Play Follow-ups
+
+1. Add net match-play scoring only with explicit stroke-allocation fixtures for 9-hole and 18-hole matches.
+2. Validate and version `gstH2HMatch` before adding automatic match resume across page refreshes.
+3. Keep H2H match history separate from `savedScorecardRounds` unless a backward-compatible shared history schema is designed.
+4. Extract shared score-control rendering only after both Scorecard Mode and H2H visual behavior have real-browser regression coverage.
+
 ## Important Logic and Data Contracts
 
 - LocalStorage key names are public compatibility contracts for existing browser data.

@@ -187,12 +187,12 @@ function getInitialElementClasses(indexHtml) {
 }
 
 function createElement(elementId, initialClasses) {
-    return {
+    let innerHtml = "";
+    const element = {
         id: elementId,
         style: {},
         textContent: "",
         value: "",
-        innerHTML: "",
         selectedIndex: 0,
         options: [{ dataset: { loft: "" } }],
         children: [],
@@ -204,6 +204,21 @@ function createElement(elementId, initialClasses) {
         addEventListener: function() {},
         click: function() {}
     };
+
+    Object.defineProperty(element, "innerHTML", {
+        get: function() {
+            return innerHtml;
+        },
+        set: function(value) {
+            innerHtml = value;
+
+            if (value === "") {
+                element.children = [];
+            }
+        }
+    });
+
+    return element;
 }
 
 function createStorage(initialValues) {
@@ -599,7 +614,78 @@ function verifyCoreDomSmoke(indexHtml, scriptSources) {
         "Smoke: Head-to-Head opens"
     );
 
-    evaluate("openH2HCompare()");
+    assert(
+        harness.document.getElementById("h2hHoleByHolePanel").style.display === "block",
+        "H2H: new match setup appears immediately"
+    );
+    assert(
+        harness.document.getElementById("h2hPlayerName").value === "G-Well" &&
+        harness.document.getElementById("h2hPlayerHci").value === 26.4,
+        "H2H: player name and HCI default from the profile"
+    );
+
+    harness.document.getElementById("h2hOpponentName").value = "Mike";
+    harness.document.getElementById("h2hOpponentHci").value = "12.4";
+    evaluate("startH2HHoleByHole(9)");
+    assert(
+        !harness.document.getElementById("h2hMatchScreen").classList.contains("hidden") &&
+        evaluate(
+            "h2hMatch.holes.length === 9 && " +
+            "h2hMatch.players[1].name === 'Mike' && " +
+            "h2hMatch.players[1].hci === 12.4"
+        ),
+        "H2H: 9-hole match scorecard starts from setup inputs"
+    );
+
+    let h2hFirstHole = harness.document.getElementById("h2hMatchGrid").children[0];
+    assert(
+        h2hFirstHole.className.includes("scorecard-hole") &&
+        h2hFirstHole.innerHTML.includes("Par 5") &&
+        h2hFirstHole.innerHTML.includes("yds") &&
+        h2hFirstHole.innerHTML.includes("HCP") &&
+        h2hFirstHole.innerHTML.includes("White"),
+        "H2H: match holes reuse the Scorecard Mode layout and course details"
+    );
+    assert(
+        h2hFirstHole.innerHTML.includes("G-Well Score") &&
+        h2hFirstHole.innerHTML.includes("Mike Score") &&
+        h2hFirstHole.innerHTML.includes("Current Hole Result:"),
+        "H2H: both score controls and exact result label are rendered"
+    );
+
+    evaluate(
+        "adjustH2HScore('player1', 1, 0); " +
+        "adjustH2HScore('player1', -1, 0); " +
+        "adjustH2HScore('player1', 1, 0); " +
+        "adjustH2HScore('player2', 1, 0); " +
+        "adjustH2HScore('player2', 1, 0)"
+    );
+    h2hFirstHole = harness.document.getElementById("h2hMatchGrid").children[0];
+    assert(
+        evaluate(
+            "h2hMatch.scores[0].player1 === h2hMatch.holes[0].par && " +
+            "h2hMatch.scores[0].player2 === h2hMatch.holes[0].par + 1"
+        ),
+        "H2H: scorecard-style plus/minus controls update both players"
+    );
+    assert(
+        h2hFirstHole.innerHTML.includes("G-Well wins hole") &&
+        harness.document.getElementById("h2hMatchStatus").textContent === "G-Well 1 Up",
+        "H2H: current-hole result and top match summary update immediately"
+    );
+    assert(
+        storage.has("gstH2HMatch"),
+        "H2H: existing active-match LocalStorage key remains compatible"
+    );
+
+    evaluate("showH2HModePicker(); openH2HHoleByHole(); startH2HHoleByHole(18)");
+    assert(
+        evaluate("h2hMatch.holes.length === 18") &&
+        harness.document.getElementById("h2hMatchGrid").children.length === 18,
+        "H2H: 18-hole match scorecard starts"
+    );
+
+    evaluate("showH2HModePicker(); openH2HCompare()");
     assert(
         harness.document.getElementById("h2hComparePanel").style.display === "block",
         "Smoke: Compare Gross and Net Scores opens"
@@ -614,13 +700,6 @@ function verifyCoreDomSmoke(indexHtml, scriptSources) {
     assert(
         !harness.document.getElementById("headToHeadResult").classList.contains("hidden"),
         "Smoke: gross/net comparison calculates"
-    );
-
-    evaluate("openH2HHoleByHole(); startH2HHoleByHole(9)");
-    assert(
-        harness.document.getElementById("h2hHoleByHolePanel").style.display === "block" &&
-        evaluate("h2hMatch.holes.length === 9"),
-        "Smoke: Hole-by-Hole Match opens"
     );
 
     evaluate("updateHci()");

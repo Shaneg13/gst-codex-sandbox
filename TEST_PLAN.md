@@ -88,6 +88,31 @@ The verifier checks:
 - [ ] Existing shot-tracking round setup, shot entry, hole score, navigation, export, and clear actions still work.
 - [ ] No unexpected console errors appear during the checklist.
 
+### Head-to-Head Match Play Checklist
+
+1. Open Head-to-Head from the Home screen.
+2. Confirm the New Match Setup appears immediately.
+3. Confirm Compare Gross and Net Scores remains available from setup and the Head-to-Head mode picker.
+4. Confirm Your Name defaults to the saved profile name or `G-Well`.
+5. Confirm Your HCI defaults to the current HCI tile value.
+6. Enter an Opponent Name and confirm the value is accepted.
+7. Enter an Opponent HCI and confirm the value is accepted.
+8. Start a 9-hole match.
+9. Confirm a dedicated Head-to-Head Match screen opens inside the app.
+10. Confirm each hole uses the same visual card structure as Scorecard Mode.
+11. Confirm each hole shows hole number, par, yards, HCP, and tee.
+12. Confirm each hole has My Score and Opponent Score `+`/`−` controls.
+13. Enter both scores on a hole.
+14. Confirm the label reads exactly `Current Hole Result:`.
+15. Confirm the gross hole winner or tie updates immediately.
+16. Confirm the top player names and match status update immediately.
+17. Repeat with an 18-hole match and confirm all 18 holes appear.
+18. Return to Head-to-Head and open Compare Gross and Net Scores.
+19. Enter both gross scores and the opponent HCI, then confirm the existing comparison result still works.
+20. Open regular Scorecard Mode and confirm its layout and score controls remain unchanged.
+
+Match-play results are gross-only in this pass. Net match play is a documented future enhancement and must not be reported as implemented.
+
 ### Field-Test Hardening Checklist
 
 Use a test browser profile so the steps do not mix with real golf data.

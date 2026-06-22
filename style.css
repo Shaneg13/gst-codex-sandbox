@@ -984,6 +984,33 @@ button:active {
     text-align: center;
 }
 
+.h2h-match-hole .hole-details {
+    display: grid;
+    gap: 10px;
+}
+
+.h2h-match-score-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+}
+
+.h2h-current-hole-result {
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding-top: 10px;
+}
+
+.h2h-current-hole-result strong,
+.h2h-current-hole-result span {
+    display: block;
+}
+
+.h2h-current-hole-result span {
+    color: #7CFF8A;
+    margin-top: 4px;
+}
+
 .button-row button {
     flex: 1;
     margin-right: 0;

@@ -9,10 +9,11 @@ A build-free, browser-based golf round, scorecard, shot, statistics, course, and
 3. [Application Logic](#application-logic)
 4. [Persistence](#persistence)
 5. [Active Scorecard Persistence](#active-scorecard-persistence)
-6. [Verification](#verification)
-7. [Deployment](#deployment)
-8. [Development Rules](#development-rules)
-9. [Lessons and Recommendations](#lessons-and-recommendations)
+6. [Head-to-Head Match Play](#head-to-head-match-play)
+7. [Verification](#verification)
+8. [Deployment](#deployment)
+9. [Development Rules](#development-rules)
+10. [Lessons and Recommendations](#lessons-and-recommendations)
 
 ## Run Locally
 
@@ -93,6 +94,21 @@ For backward compatibility, the app continues writing `simpleScorecard` and `sco
 
 A scorecard cannot be added to completed Recent Rounds while any required score is missing. The active progress remains available to continue later. `Abandon Current Round` requires confirmation and clears only active scorecard progress; completed rounds, profile data, Stats history, Course Info, and Head-to-Head data remain unchanged.
 
+## Head-to-Head Match Play
+
+Head-to-Head provides two independent flows:
+
+1. **Hole-by-Hole Match** — enter player and opponent details, choose 9 or 18 holes, and track both gross scores on a dedicated in-app scorecard screen.
+2. **Compare Gross and Net Scores** — the existing completed-score comparison with handicap strokes remains available and unchanged.
+
+Opening Head-to-Head goes directly to New Match Setup. Compare Gross and Net Scores remains available from setup and the Head-to-Head mode picker.
+
+The match-play scorecard reuses the regular Scorecard Mode layout classes for hole number, par, yards, HCP, tee, and `+`/`−` score controls. Each hole displays `Current Hole Result:` and the gross match status. The summary at the top displays both player names and the current lead or `All Square`.
+
+This first match-play pass uses **gross hole scores** to decide each hole and the match lead. Opponent HCI is collected for future net match-play support but does not change the gross match result. Net match-play scoring is intentionally deferred; the existing gross/net comparison continues to provide net-score comparison behavior.
+
+The existing `gstH2HMatch` LocalStorage key is still updated for compatibility, but H2H matches are not added to Recent Rounds and no match-history feature has been added. No new H2H LocalStorage key was introduced.
+
 ## Verification
 
 Before every commit, run the complete npm-free verification command from the repository root:
@@ -104,6 +120,8 @@ node scripts/verify-app.js
 The verifier checks every JavaScript file with `node --check`, validates script order and asset references, executes the app with valid and malformed LocalStorage, confirms global HTML handlers, runs representative DOM smoke flows, and serves every app asset through a temporary local HTTP server to require HTTP 200 responses.
 
 Field-test verification also covers active-round autosave, refresh and Continue restoration, current-hole restoration, incomplete-save blocking, abandon isolation, corrupted active data, and migration from legacy scorecard progress.
+
+Head-to-Head verification covers setup defaults, opponent inputs, 9-hole match creation, reused Scorecard Mode layout, both players' controls, gross hole results, match summary updates, and the existing gross/net comparison.
 
 No npm install or build step is required. A failed check exits with a nonzero status and prints the failing condition.
 

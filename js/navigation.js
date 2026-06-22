@@ -37,7 +37,8 @@ function hideAllScreens() {
         "courseInfoScreen",
         "pastRoundScreen",
         "statsScreen",
-        "headToHeadScreen"
+        "headToHeadScreen",
+        "h2hMatchScreen"
     ];
 
     cardScreenIds.forEach(function(elementId) {

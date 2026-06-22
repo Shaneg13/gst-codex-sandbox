@@ -347,7 +347,7 @@
 
     <div id="h2hHoleByHolePanel" style="display: none;">
 
-        <h3>Hole-by-Hole Match</h3>
+        <h3>New Match Setup</h3>
 
         <div class="match-card">
             <label>Your Name</label>
@@ -366,10 +366,10 @@
                 <button onclick="startH2HHoleByHole(9)">Start 9 Holes</button>
                 <button onclick="startH2HHoleByHole(18)">Start 18 Holes</button>
             </div>
-        </div>
 
-        <div id="h2hActiveMatch" style="display: none;">
-            <div id="h2hHoleDisplay"></div>
+            <button onclick="openH2HCompare()" class="secondary-button">
+                Compare Gross and Net Scores
+            </button>
         </div>
 
         <button onclick="showH2HModePicker()" class="secondary-button">
@@ -437,6 +437,35 @@
 
 </div>
 
+<div id="h2hMatchScreen" class="card hidden">
+
+    <h2>Head-to-Head Match</h2>
+    <p class="section-subtitle">Hole-by-hole match play</p>
+
+    <div class="scorecard-summary">
+        <div>
+            <span>Players</span>
+            <strong id="h2hMatchPlayers">G-Well vs Opponent</strong>
+        </div>
+
+        <div>
+            <span>Match</span>
+            <strong id="h2hMatchStatus">All Square</strong>
+        </div>
+    </div>
+
+    <div id="h2hMatchGrid" class="scorecard-grid"></div>
+
+    <button onclick="showH2HModePicker()" class="secondary-button">
+        Back to Head-to-Head
+    </button>
+
+    <button onclick="showHome()" class="secondary-button">
+        Back Home
+    </button>
+
+</div>
+
 <div id="roundDetailScreen" class="card hidden">
 
     <h2>Round Detail</h2>
@@ -476,7 +505,7 @@
 <script src="js/state.js?v=2"></script>
 <script src="js/navigation.js?v=1"></script>
 <script src="js/utils.js?v=1"></script>
-<script src="app.js?v=16"></script>
+<script src="app.js?v=17"></script>
 
 <div id="roundModePopup" class="modal hidden">
     <div class="modal-content round-mode-modal">

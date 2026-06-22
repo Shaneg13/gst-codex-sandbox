@@ -1496,13 +1496,14 @@ function closeAllSwipeCards(exceptCard) {
 
 function showHeadToHead() {
     hideAllScreens();
-
     setElementHidden("headToHeadScreen", false);
-
-    showH2HModePicker();
+    openH2HHoleByHole();
 }
 
 function showH2HModePicker() {
+    hideAllScreens();
+    setElementHidden("headToHeadScreen", false);
+
     const modePicker = document.getElementById("h2hModePicker");
     const holePanel = document.getElementById("h2hHoleByHolePanel");
     const comparePanel = document.getElementById("h2hComparePanel");
@@ -1609,9 +1610,13 @@ function startH2HHoleByHole(holeCount) {
 
     localStorage.setItem("gstH2HMatch", JSON.stringify(h2hMatch));
 
-    document.getElementById("h2hActiveMatch").style.display = "block";
+    showH2HMatchScreen();
+}
 
-    renderH2HHole();
+function showH2HMatchScreen() {
+    hideAllScreens();
+    setElementHidden("h2hMatchScreen", false);
+    renderH2HMatchScorecard();
 }
 
 function getH2HHoles(holeCount) {
@@ -1751,75 +1756,151 @@ function calculateHeadToHead() {
 }
 
 function renderH2HHole() {
-    if (!h2hMatch) return;
+    renderH2HMatchScorecard();
+}
 
-    const holeIndex = h2hMatch.currentHole - 1;
-    const hole = h2hMatch.holes[holeIndex];
+function getH2HMatchPlayHoleResult(holeIndex) {
+    if (!h2hMatch) return "";
+
     const scores = h2hMatch.scores[holeIndex];
-
-    const player1Score = scores.player1 ?? hole.par;
-    const player2Score = scores.player2 ?? hole.par;
-
     const player1 = h2hMatch.players[0];
     const player2 = h2hMatch.players[1];
 
-    const display = document.getElementById("h2hHoleDisplay");
-
-    display.innerHTML = `
-        <div class="card">
-            <h3>Hole ${hole.holeNumber}</h3>
-            <p>Par ${hole.par} | ${hole.yards} yards | HCP ${hole.hcp} | ${hole.tee}</p>
-
-            <div class="h2h-score-row">
-                <strong>${player1.name}</strong>
-                <button onclick="adjustH2HScore('player1', -1)">-</button>
-                <span class="h2h-score">${player1Score}</span>
-                <button onclick="adjustH2HScore('player1', 1)">+</button>
-            </div>
-
-            <div class="h2h-score-row">
-                <strong>${player2.name}</strong>
-                <button onclick="adjustH2HScore('player2', -1)">-</button>
-                <span class="h2h-score">${player2Score}</span>
-                <button onclick="adjustH2HScore('player2', 1)">+</button>
-            </div>
-
-            <div class="button-row">
-                <button onclick="previousH2HHole()">Previous</button>
-                <button onclick="saveH2HHole()">Save Hole</button>
-                <button onclick="nextH2HHole()">Next</button>
-            </div>
-
-            <div id="h2hHoleResult">
-                ${getH2HHoleResultText(holeIndex)}
-            </div>
-        </div>
-
-        <div class="card">
-            <h3>Match Summary</h3>
-            ${getH2HMatchSummaryText()}
-        </div>
-    `;
-}
-
-function adjustH2HScore(playerKey, change) {
-    if (!h2hMatch) return;
-
-    const holeIndex = h2hMatch.currentHole - 1;
-    const hole = h2hMatch.holes[holeIndex];
-
-    if (h2hMatch.scores[holeIndex][playerKey] === null) {
-        h2hMatch.scores[holeIndex][playerKey] = hole.par;
+    if (scores.player1 === null || scores.player2 === null) {
+        return "Enter both scores";
     }
 
-    h2hMatch.scores[holeIndex][playerKey] += change;
+    if (scores.player1 < scores.player2) {
+        return `${player1.name} wins hole`;
+    }
+
+    if (scores.player2 < scores.player1) {
+        return `${player2.name} wins hole`;
+    }
+
+    return "Hole tied";
+}
+
+function getH2HMatchPlayStatus(lastHoleIndex) {
+    if (!h2hMatch) return "All Square";
+
+    let player1Wins = 0;
+    let player2Wins = 0;
+
+    h2hMatch.scores.forEach(function(scores, holeIndex) {
+        if (holeIndex > lastHoleIndex) {
+            return;
+        }
+
+        if (scores.player1 === null || scores.player2 === null) {
+            return;
+        }
+
+        if (scores.player1 < scores.player2) player1Wins++;
+        if (scores.player2 < scores.player1) player2Wins++;
+    });
+
+    const player1 = h2hMatch.players[0];
+    const player2 = h2hMatch.players[1];
+    const difference = player1Wins - player2Wins;
+
+    if (difference === 0) {
+        return "All Square";
+    }
+
+    if (difference > 0) {
+        return `${player1.name} ${difference} Up`;
+    }
+
+    return `${player2.name} ${Math.abs(difference)} Up`;
+}
+
+function renderH2HMatchScorecard() {
+    if (!h2hMatch) return;
+
+    const player1 = h2hMatch.players[0];
+    const player2 = h2hMatch.players[1];
+    const playersDisplay = document.getElementById("h2hMatchPlayers");
+    const statusDisplay = document.getElementById("h2hMatchStatus");
+    const grid = document.getElementById("h2hMatchGrid");
+
+    playersDisplay.textContent = `${player1.name} vs ${player2.name}`;
+    statusDisplay.textContent = getH2HMatchPlayStatus(h2hMatch.holeCount - 1);
+    grid.innerHTML = "";
+
+    h2hMatch.holes.forEach(function(hole, holeIndex) {
+        const scores = h2hMatch.scores[holeIndex];
+        const player1Score = scores.player1 === null ? "-" : scores.player1;
+        const player2Score = scores.player2 === null ? "-" : scores.player2;
+        const holeDiv = document.createElement("div");
+
+        holeDiv.className = "scorecard-hole h2h-match-hole";
+        holeDiv.innerHTML = `
+            <div class="hole-number">${hole.holeNumber}</div>
+
+            <div class="hole-details">
+                <strong>Hole ${hole.holeNumber}</strong>
+                <span>Par ${hole.par} • ${hole.yards} yds • HCP ${hole.hcp} | ${hole.tee}</span>
+
+                <div class="h2h-match-score-row">
+                    <span>${player1.name} Score</span>
+                    <div class="score-controls">
+                        <button onclick="adjustH2HScore('player1', -1, ${holeIndex})">−</button>
+                        <div class="score-value">${player1Score}</div>
+                        <button onclick="adjustH2HScore('player1', 1, ${holeIndex})">+</button>
+                    </div>
+                </div>
+
+                <div class="h2h-match-score-row">
+                    <span>${player2.name} Score</span>
+                    <div class="score-controls">
+                        <button onclick="adjustH2HScore('player2', -1, ${holeIndex})">−</button>
+                        <div class="score-value">${player2Score}</div>
+                        <button onclick="adjustH2HScore('player2', 1, ${holeIndex})">+</button>
+                    </div>
+                </div>
+
+                <div class="h2h-current-hole-result">
+                    <strong>Current Hole Result:</strong>
+                    <span>${getH2HMatchPlayHoleResult(holeIndex)}</span>
+                    <span>Match: ${getH2HMatchPlayStatus(holeIndex)}</span>
+                </div>
+            </div>
+        `;
+
+        grid.appendChild(holeDiv);
+    });
+}
+
+function adjustH2HScore(playerKey, change, requestedHoleIndex) {
+    if (!h2hMatch) return;
+
+    const holeIndex = Number.isInteger(requestedHoleIndex)
+        ? requestedHoleIndex
+        : h2hMatch.currentHole - 1;
+    const hole = h2hMatch.holes[holeIndex];
+    const currentScore = h2hMatch.scores[holeIndex][playerKey];
+
+    h2hMatch.currentHole = holeIndex + 1;
+
+    if (currentScore === null) {
+        if (change < 0) {
+            saveH2HMatch();
+            renderH2HMatchScorecard();
+            return;
+        }
+
+        h2hMatch.scores[holeIndex][playerKey] = hole.par;
+    } else {
+        h2hMatch.scores[holeIndex][playerKey] += change;
+    }
 
     if (h2hMatch.scores[holeIndex][playerKey] < 1) {
-        h2hMatch.scores[holeIndex][playerKey] = 1;
+        h2hMatch.scores[holeIndex][playerKey] = null;
     }
 
     saveH2HMatch();
-    renderH2HHole();
+    renderH2HMatchScorecard();
 }
 
 function saveH2HHole() {
