@@ -100,6 +100,15 @@ h3 {
     color: #061008 !important;
 }
 
+.beta-testing-label {
+    margin: 4px 0 0;
+    color: rgba(124, 255, 138, 0.45);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-align: center;
+    text-transform: uppercase;
+}
+
 label {
     display: block;
     margin-top: 14px;
