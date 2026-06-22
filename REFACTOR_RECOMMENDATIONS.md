@@ -33,7 +33,11 @@ The safest immediate improvements are documentation, defensive LocalStorage pars
 
 - `index.html` contains every screen, modal, input, and inline event handler.
 - `style.css` contains the complete dark GST theme and responsive rules.
-- `app.js` contains course data, global state, persistence, rendering, navigation, scorecard entry, past-round entry, recent rounds, course information, player profile, Head-to-Head, exports, statistics, and startup behavior.
+- `js/storage.js` contains defensive LocalStorage and saved-round persistence helpers.
+- `js/state.js` contains shared classic-script state bindings.
+- `js/navigation.js` contains shared screen visibility mechanics.
+- `js/utils.js` contains general-purpose utilities.
+- `app.js` retains course data, feature rendering, feature navigation, scorecard entry, past-round entry, recent rounds, course information, player profile, Head-to-Head, exports, statistics, global HTML handlers, and startup behavior.
 - Browser LocalStorage is the only persistence layer.
 - Functions are exposed globally because HTML invokes them through inline handlers.
 
@@ -113,6 +117,8 @@ The current pass should be limited to:
 5. Wrap existing startup statements in a named initialization function without changing their order.
 6. Normalize formatting only where code is already being touched.
 
+The first structural extraction is now complete. Storage helpers, shared state bindings, screen visibility helpers, and date formatting were moved into ordered classic scripts. All feature engines and inline-handler functions remain in `app.js`. The scripts intentionally share the browser global scope so GitHub Pages continues to run the source directly without modules or bundling.
+
 ## Deferred Recommendations
 
 1. Add automated tests for scoring, handicap strokes, Head-to-Head results, saved-round rendering, and corrupted LocalStorage.
@@ -123,6 +129,10 @@ The current pass should be limited to:
 6. Split feature code into build-free classic scripts or ES modules only after GitHub Pages compatibility is tested across target browsers.
 7. Add safe text-rendering helpers before expanding user-editable names or course data.
 8. Add a repository test command and CI workflow after the first test suite exists.
+9. Extract the scorecard engine only after scoring and saved-round fixtures exist.
+10. Extract Head-to-Head only after handicap allocation and match-result fixtures exist.
+11. Extract stats calculations only after historical-round fixtures exist.
+12. Extract course management only with a defined multi-course and tee-routing schema.
 
 ## Verification Strategy
 

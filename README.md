@@ -29,7 +29,11 @@ Then open `http://127.0.0.1:8765/index.html`.
 
 - `index.html` — all screens, controls, modals, and static app copy.
 - `style.css` — dark GST theme, responsive layout, and component styling.
-- `app.js` — course data, state, persistence, feature logic, rendering, navigation, and startup.
+- `js/storage.js` — LocalStorage parsing and saved-round persistence helpers.
+- `js/state.js` — shared global runtime state used by existing features.
+- `js/navigation.js` — shared screen visibility mechanics.
+- `js/utils.js` — general-purpose, behavior-independent utilities.
+- `app.js` — course data, feature logic, rendering, feature navigation, global HTML handlers, and startup.
 - `golfshottracker.png` — splash-screen artwork.
 - `golfshottrackericon.png` — browser and home-screen icon.
 - `gstbanner.png` — application header banner.
@@ -37,7 +41,19 @@ Then open `http://127.0.0.1:8765/index.html`.
 
 ## Application Logic
 
-The current app uses classic browser JavaScript and globally available functions because `index.html` invokes feature actions through inline event handlers. Major feature areas are:
+The app uses ordered classic browser scripts and globally available functions because `index.html` invokes feature actions through inline event handlers. No modules, package installation, or build tools are required.
+
+Required script order:
+
+1. `js/storage.js`
+2. `js/state.js`
+3. `js/navigation.js`
+4. `js/utils.js`
+5. `app.js`
+
+`storage.js` must load before `state.js` because initial state uses the defensive JSON reader. `app.js` loads last so every shared binding and helper is available before startup runs.
+
+Major feature areas retained in `app.js` are:
 
 - Shot-by-shot round tracking and hole scoring.
 - Simple 9-hole and 18-hole scorecards.
@@ -59,16 +75,16 @@ The app defensively falls back to existing defaults when a JSON value is malform
 
 ## Verification
 
-Run JavaScript syntax verification:
+Run JavaScript syntax verification for every classic script:
 
 ```powershell
-node --check app.js
+Get-ChildItem app.js,js\*.js | ForEach-Object { node --check $_.FullName }
 ```
 
 For a release check:
 
 1. Serve the repository through local HTTP.
-2. Confirm `index.html`, `app.js`, `style.css`, and all PNG assets return HTTP 200.
+2. Confirm `index.html`, every JavaScript file, `style.css`, and all PNG assets return HTTP 200.
 3. Confirm the home screen loads and retains the `Beta Testing` label.
 4. Exercise scorecard, shot tracking, recent rounds, stats, course information, Handicap Index, and Head-to-Head flows.
 5. Confirm the Git working tree is clean after committing.
@@ -83,7 +99,7 @@ The repository is deployable directly through GitHub Pages. Publish the reposito
 - Preserve globally referenced function names until inline handlers are migrated safely.
 - Keep scoring and Head-to-Head changes separate from structural refactors.
 - Maintain the dark GST theme and current navigation flow.
-- Add regression tests before splitting feature logic into modules.
+- Add regression tests before extracting the remaining feature engines.
 - Keep documentation current when behavior, data contracts, setup, or deployment changes.
 
 ## Lessons and Recommendations

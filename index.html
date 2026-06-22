@@ -467,7 +467,12 @@
 
 </div>
 
-<script src="app.js?v=14"></script>
+<!-- Classic scripts share the global scope; dependency order is required. -->
+<script src="js/storage.js?v=1"></script>
+<script src="js/state.js?v=1"></script>
+<script src="js/navigation.js?v=1"></script>
+<script src="js/utils.js?v=1"></script>
+<script src="app.js?v=15"></script>
 
 <div id="roundModePopup" class="modal hidden">
     <div class="modal-content round-mode-modal">

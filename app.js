@@ -1,23 +1,4 @@
 // ============================================================
-// Persistent application state
-// ============================================================
-
-let currentHole = Number(localStorage.getItem("currentHole")) || 1;
-
-let currentRound = readStoredJson("currentRound", null);
-
-let shots = readStoredJson("shots", []);
-
-let holes = readStoredJson("holes", []);
-
-let playerProfile = {
-    name: "G-Well",
-    hci: 26.4
-};
-
-let pastRoundScorecard = [];
-
-// ============================================================
 // Course data
 // ============================================================
 
@@ -52,61 +33,6 @@ blueTees: [
 ]
     }
 };
-
-const SAVED_ROUNDS_KEY = "savedScorecardRounds";
-
-let selectedCourseId =
-    localStorage.getItem("selectedCourseId") || "whitinsville";
-
-// ============================================================
-// Shared storage and DOM helpers
-// ============================================================
-
-/**
- * Read JSON from LocalStorage without allowing malformed browser data to
- * prevent the app from loading. Valid stored values and existing key names
- * remain unchanged.
- */
-function readStoredJson(key, fallbackValue) {
-    const storedValue = localStorage.getItem(key);
-
-    if (storedValue === null) {
-        return fallbackValue;
-    }
-
-    try {
-        return JSON.parse(storedValue) || fallbackValue;
-    } catch (error) {
-        console.warn(`Could not read LocalStorage key "${key}":`, error);
-        return fallbackValue;
-    }
-}
-
-function getSavedRounds() {
-    return readStoredJson(SAVED_ROUNDS_KEY, []);
-}
-
-function saveSavedRounds(savedRounds) {
-    localStorage.setItem(SAVED_ROUNDS_KEY, JSON.stringify(savedRounds));
-}
-
-function setElementDisplay(elementId, displayValue) {
-    const element = document.getElementById(elementId);
-
-    if (element) {
-        element.style.display = displayValue;
-    }
-}
-
-function setElementHidden(elementId, shouldHide) {
-    const element = document.getElementById(elementId);
-
-    if (!element) {
-        return;
-    }
-
-    element.classList.toggle("hidden", shouldHide);
-}
 
 // ============================================================
 // Shot-tracking round and hole flow
@@ -500,8 +426,6 @@ if (currentRound) {
 // Simple scorecard flow
 // ============================================================
 
-let simpleScorecard = [];
-
 function startScorecardMode() {
     closeRoundModePopup();
 
@@ -691,35 +615,6 @@ const round = {
     goHome();
 }
 
-function hideAllScreens() {
-    const cardScreenIds = [
-        "homeCard",
-        "roundSetupCard",
-        "shotTrackerCard",
-        "summaryCard",
-        "scorecardCard",
-        "recentShotsCard"
-    ];
-
-    const hiddenClassScreenIds = [
-        "scorecardScreen",
-        "recentRoundsScreen",
-        "roundDetailScreen",
-        "courseInfoScreen",
-        "pastRoundScreen",
-        "statsScreen",
-        "headToHeadScreen"
-    ];
-
-    cardScreenIds.forEach(function(elementId) {
-        setElementDisplay(elementId, "none");
-    });
-
-    hiddenClassScreenIds.forEach(function(elementId) {
-        setElementHidden(elementId, true);
-    });
-}
-
 // ============================================================
 // Past-round entry and saved-round history
 // ============================================================
@@ -797,24 +692,6 @@ function setupPastRound(numberOfHoles) {
     }
 
     renderPastRoundEntry();
-}
-
-function formatDateForDisplay(dateValue) {
-    if (!dateValue) {
-        return "";
-    }
-
-    const parts = dateValue.split("-");
-
-    if (parts.length !== 3) {
-        return dateValue;
-    }
-
-    const year = parts[0];
-    const month = Number(parts[1]);
-    const day = Number(parts[2]);
-
-    return month + "/" + day + "/" + year;
 }
 
 function renderPastRoundEntry() {
@@ -1491,8 +1368,6 @@ function loadH2HPlayerDefaults() {
         playerHciInput.value = playerProfile?.hci ?? "";
     }
 }
-
-let h2hMatch = null;
 
 function startH2HHoleByHole(holeCount) {
     const playerName = document.getElementById("h2hPlayerName").value || "G-Well";
