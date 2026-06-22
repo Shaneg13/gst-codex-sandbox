@@ -14,6 +14,7 @@ let playerProfile = {
 
 let pastRoundScorecard = [];
 let simpleScorecard = [];
+let activeScorecardRound = null;
 let h2hMatch = null;
 
 let selectedCourseId =

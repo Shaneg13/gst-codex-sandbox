@@ -434,6 +434,152 @@ function startScorecardMode() {
     showHoleCountPopup();
 }
 
+function isValidScorecardHole(hole) {
+    return Boolean(
+        hole &&
+        Number.isInteger(hole.hole) &&
+        Number.isFinite(hole.par) &&
+        (hole.score === null || Number.isFinite(hole.score))
+    );
+}
+
+function isValidActiveScorecardRound(activeRound) {
+    if (!activeRound || activeRound.version !== 1) {
+        return false;
+    }
+
+    if (!courses[activeRound.courseId]) {
+        return false;
+    }
+
+    if (activeRound.holeCount !== 9 && activeRound.holeCount !== 18) {
+        return false;
+    }
+
+    if (
+        !Number.isInteger(activeRound.currentHole) ||
+        activeRound.currentHole < 1 ||
+        activeRound.currentHole > activeRound.holeCount
+    ) {
+        return false;
+    }
+
+    if (
+        activeRound.hciUsed !== null &&
+        !Number.isFinite(activeRound.hciUsed)
+    ) {
+        return false;
+    }
+
+    return Boolean(
+        Array.isArray(activeRound.holes) &&
+        activeRound.holes.length === activeRound.holeCount &&
+        activeRound.holes.every(isValidScorecardHole)
+    );
+}
+
+function persistActiveScorecardProgress() {
+    if (!activeScorecardRound || simpleScorecard.length === 0) {
+        return;
+    }
+
+    activeScorecardRound.courseId = selectedCourseId;
+    activeScorecardRound.holeCount = simpleScorecard.length;
+    activeScorecardRound.holes = simpleScorecard;
+
+    saveActiveScorecardRound(activeScorecardRound);
+
+    // Continue writing the legacy progress keys for backward compatibility.
+    localStorage.setItem("simpleScorecard", JSON.stringify(simpleScorecard));
+    localStorage.setItem("scorecardHoleCount", activeScorecardRound.holeCount);
+}
+
+function clearActiveScorecardProgress() {
+    activeScorecardRound = null;
+    simpleScorecard = [];
+
+    clearActiveScorecardRound();
+    localStorage.removeItem("simpleScorecard");
+    localStorage.removeItem("scorecardHoleCount");
+
+    if (localStorage.getItem("roundMode") === "scorecard") {
+        localStorage.removeItem("roundMode");
+    }
+}
+
+function applyActiveScorecardRound(activeRound) {
+    activeScorecardRound = activeRound;
+    simpleScorecard = activeRound.holes;
+    selectedCourseId = activeRound.courseId;
+
+    localStorage.setItem("roundMode", "scorecard");
+    persistActiveScorecardProgress();
+}
+
+function restoreActiveScorecardProgress() {
+    const storedActiveValue =
+        localStorage.getItem(ACTIVE_SCORECARD_KEY);
+
+    if (storedActiveValue !== null) {
+        const storedActiveRound = getActiveScorecardRound();
+
+        if (!isValidActiveScorecardRound(storedActiveRound)) {
+            console.warn("Active scorecard data was invalid and has been cleared.");
+            clearActiveScorecardProgress();
+            return false;
+        }
+
+        applyActiveScorecardRound(storedActiveRound);
+        return true;
+    }
+
+    const legacyScorecardValue =
+        localStorage.getItem("simpleScorecard");
+
+    if (legacyScorecardValue === null) {
+        return false;
+    }
+
+    const legacyScorecard =
+        readStoredJson("simpleScorecard", null);
+    const legacyHoleCount =
+        Number(localStorage.getItem("scorecardHoleCount")) ||
+        (Array.isArray(legacyScorecard) ? legacyScorecard.length : 0);
+    const legacyCourseId =
+        courses[selectedCourseId] ? selectedCourseId : "whitinsville";
+    const legacyCurrentHole = Math.min(
+        Math.max(currentHole, 1),
+        legacyHoleCount
+    );
+    const migratedActiveRound = {
+        version: 1,
+        courseId: legacyCourseId,
+        holeCount: legacyHoleCount,
+        currentHole: legacyCurrentHole,
+        hciUsed: playerProfile.hci,
+        holes: legacyScorecard
+    };
+
+    if (!isValidActiveScorecardRound(migratedActiveRound)) {
+        console.warn("Legacy scorecard progress was invalid and has been cleared.");
+        clearActiveScorecardProgress();
+        return false;
+    }
+
+    applyActiveScorecardRound(migratedActiveRound);
+    return true;
+}
+
+function resumeActiveScorecardRound() {
+    if (!activeScorecardRound && !restoreActiveScorecardProgress()) {
+        return false;
+    }
+
+    showScorecardScreen();
+    renderSimpleScorecard();
+    return true;
+}
+
 function initializeScorecard(numberOfHoles) {
     const course =
         courses[selectedCourseId];
@@ -483,7 +629,16 @@ const backNine =
             frontNine.concat(backNine);
     }
 
-    localStorage.setItem("simpleScorecard", JSON.stringify(simpleScorecard));
+    activeScorecardRound = {
+        version: 1,
+        courseId: selectedCourseId,
+        holeCount: numberOfHoles,
+        currentHole: 1,
+        hciUsed: playerProfile.hci,
+        holes: simpleScorecard
+    };
+
+    persistActiveScorecardProgress();
     renderSimpleScorecard();
 }
 
@@ -511,8 +666,11 @@ function renderSimpleScorecard() {
         const holeDiv = document.createElement("div");
         holeDiv.className = "scorecard-hole";
 
+        const hciUsed = activeScorecardRound
+            ? activeScorecardRound.hciUsed
+            : playerProfile.hci;
         const strokeDots =
-            getStrokeDots(hole.handicap, playerProfile.hci);
+            getStrokeDots(hole.handicap, hciUsed);
 
         holeDiv.innerHTML = `
             <div class="hole-number">${hole.hole}</div>
@@ -542,12 +700,20 @@ function increaseScore(index) {
         simpleScorecard[index].score++;
     }
 
+    if (activeScorecardRound) {
+        activeScorecardRound.currentHole = index + 1;
+    }
     saveSimpleScorecardProgress();
     renderSimpleScorecard();
 }
 
 function decreaseScore(index) {
+    if (activeScorecardRound) {
+        activeScorecardRound.currentHole = index + 1;
+    }
+
     if (simpleScorecard[index].score === null) {
+        saveSimpleScorecardProgress();
         return;
     }
 
@@ -585,20 +751,40 @@ function updateScorecardSummary() {
 }
 
 function saveSimpleScorecardProgress() {
+    if (activeScorecardRound) {
+        persistActiveScorecardProgress();
+        return;
+    }
+
     localStorage.setItem("simpleScorecard", JSON.stringify(simpleScorecard));
 }
 
 function saveScorecardRound() {
+    const incompleteHoles = simpleScorecard.filter(function(hole) {
+        return hole.score === null || hole.score === undefined;
+    });
+
+    if (simpleScorecard.length === 0 || incompleteHoles.length > 0) {
+        alert("Enter a score for every hole before saving the round.");
+        return;
+    }
+
     const savedRounds = getSavedRounds();
+    const scorecardCourseId = activeScorecardRound
+        ? activeScorecardRound.courseId
+        : selectedCourseId;
+    const scorecardHciUsed = activeScorecardRound
+        ? activeScorecardRound.hciUsed
+        : playerProfile.hci;
 
 const round = {
     id: Date.now(),
     date: new Date().toLocaleDateString(),
     mode: "scorecard",
-    courseId: selectedCourseId,
-    courseName: courses[selectedCourseId].name,
+    courseId: scorecardCourseId,
+    courseName: courses[scorecardCourseId].name,
     holesPlayed: simpleScorecard.length,
-    hciUsed: playerProfile.hci,
+    hciUsed: scorecardHciUsed,
     holes: simpleScorecard,
     totalScore: simpleScorecard
         .filter(hole => hole.score !== null)
@@ -608,10 +794,28 @@ const round = {
     savedRounds.push(round);
 
     saveSavedRounds(savedRounds);
-    localStorage.removeItem("simpleScorecard");
+    clearActiveScorecardProgress();
 
     alert("Scorecard round saved.");
 
+    goHome();
+}
+
+function abandonCurrentScorecardRound() {
+    if (!activeScorecardRound) {
+        goHome();
+        return;
+    }
+
+    const confirmed = confirm(
+        "Abandon current round? Unsaved scorecard progress will be lost."
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    clearActiveScorecardProgress();
     goHome();
 }
 
@@ -1827,6 +2031,9 @@ function showRoundSetup() {
 }
 
 function continueRound() {
+    if (resumeActiveScorecardRound()) {
+        return;
+    }
 
     if (!currentRound) {
         alert("No existing round found. Start a new round first.");
@@ -1989,6 +2196,7 @@ function showHome() {
 
 function initializeApp() {
     loadPlayerProfile();
+    restoreActiveScorecardProgress();
     renderShots();
     updateSummary();
 

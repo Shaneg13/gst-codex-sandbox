@@ -216,6 +216,7 @@ function createAppHarness(indexHtml, scriptSources, storage) {
     const initialClassMap = getInitialElementClasses(indexHtml);
     const elements = new Map();
     const loadHandlers = [];
+    const alerts = [];
     const consoleErrors = [];
     const consoleWarnings = [];
 
@@ -267,7 +268,9 @@ function createAppHarness(indexHtml, scriptSources, storage) {
                 consoleErrors.push(args);
             }
         },
-        alert: function() {},
+        alert: function(message) {
+            alerts.push(message);
+        },
         confirm: function() {
             return true;
         },
@@ -307,6 +310,7 @@ function createAppHarness(indexHtml, scriptSources, storage) {
     loadHandlers.forEach(handler => handler());
 
     return {
+        alerts,
         consoleErrors,
         consoleWarnings,
         context,
@@ -362,7 +366,8 @@ function verifyMalformedStorageStartup(indexHtml, scriptSources) {
         shots: "{invalid json",
         holes: "{invalid json",
         savedScorecardRounds: "{invalid json",
-        gstPlayerProfile: "{invalid json"
+        gstPlayerProfile: "{invalid json",
+        gstActiveScorecardRound: "{invalid json"
     });
 
     const harness = createAppHarness(indexHtml, scriptSources, storage);
@@ -371,12 +376,51 @@ function verifyMalformedStorageStartup(indexHtml, scriptSources) {
         harness.evaluate(
             "currentRound === null && Array.isArray(shots) && shots.length === 0 && " +
             "Array.isArray(holes) && holes.length === 0 && getSavedRounds().length === 0 && " +
-            "playerProfile.name === 'G-Well' && playerProfile.hci === 26.4"
+            "playerProfile.name === 'G-Well' && playerProfile.hci === 26.4 && " +
+            "activeScorecardRound === null"
         ),
         "App initializes safely with malformed LocalStorage"
     );
+    assert(
+        !storage.has("gstActiveScorecardRound"),
+        "Malformed active scorecard data is cleared safely"
+    );
     assert(harness.consoleErrors.length === 0, "Malformed startup has no console errors");
-    assert(harness.consoleWarnings.length >= 5, "Malformed values use defensive fallbacks");
+    assert(harness.consoleWarnings.length >= 6, "Malformed values use defensive fallbacks");
+}
+
+function verifyLegacyScorecardMigration(indexHtml, scriptSources) {
+    const legacyHoles = Array.from({ length: 9 }, function(_, index) {
+        return {
+            hole: index + 1,
+            par: 4,
+            yards: 300,
+            tee: "White",
+            handicap: index + 1,
+            score: index === 0 ? 5 : null
+        };
+    });
+    const storage = createStorage({
+        currentHole: "3",
+        scorecardHoleCount: "9",
+        selectedCourseId: "whitinsville",
+        simpleScorecard: JSON.stringify(legacyHoles)
+    });
+    const harness = createAppHarness(indexHtml, scriptSources, storage);
+
+    assert(
+        harness.evaluate(
+            "activeScorecardRound !== null && " +
+            "activeScorecardRound.holeCount === 9 && " +
+            "activeScorecardRound.currentHole === 3 && " +
+            "activeScorecardRound.holes[0].score === 5"
+        ),
+        "Legacy simpleScorecard progress migrates to active-round state"
+    );
+    assert(
+        storage.has("gstActiveScorecardRound"),
+        "Legacy migration writes the versioned active-round key"
+    );
 }
 
 function verifyGlobalHandlers(indexHtml, scriptSources) {
@@ -397,11 +441,11 @@ function verifyGlobalHandlers(indexHtml, scriptSources) {
 
 function verifyCoreDomSmoke(indexHtml, scriptSources) {
     const storage = createStorage();
-    const harness = createAppHarness(indexHtml, scriptSources, storage);
-    const evaluate = harness.evaluate;
+    let harness = createAppHarness(indexHtml, scriptSources, storage);
+    const evaluate = source => harness.evaluate(source);
 
-    const homeCard = harness.document.getElementById("homeCard");
-    const splashScreen = harness.document.getElementById("splashScreen");
+    let homeCard = harness.document.getElementById("homeCard");
+    let splashScreen = harness.document.getElementById("splashScreen");
 
     assert(
         !homeCard.classList.contains("hidden") &&
@@ -424,9 +468,6 @@ function verifyCoreDomSmoke(indexHtml, scriptSources) {
         "Smoke: 9-hole scorecard starts"
     );
 
-    evaluate("startScorecardRound(18)");
-    assert(evaluate("simpleScorecard.length === 18"), "Smoke: 18-hole scorecard starts");
-
     const openingPar = evaluate("simpleScorecard[0].par");
     evaluate("increaseScore(0)");
     assert(
@@ -438,11 +479,94 @@ function verifyCoreDomSmoke(indexHtml, scriptSources) {
         evaluate("simpleScorecard[0].score") === openingPar - 1,
         "Smoke: score minus control works"
     );
+    evaluate("increaseScore(1)");
+    assert(
+        evaluate("simpleScorecard[1].score === simpleScorecard[1].par"),
+        "Field test: scores can be entered on multiple holes"
+    );
+    assert(
+        JSON.parse(storage.get("gstActiveScorecardRound")).currentHole === 2 &&
+        JSON.parse(storage.get("gstActiveScorecardRound")).holes[0].score === openingPar - 1,
+        "Field test: every score change autosaves active progress"
+    );
+
+    harness = createAppHarness(indexHtml, scriptSources, storage);
+    evaluate("continueRound()");
+    assert(
+        evaluate(
+            "simpleScorecard.length === 9 && " +
+            "simpleScorecard[0].score === simpleScorecard[0].par - 1 && " +
+            "simpleScorecard[1].score === simpleScorecard[1].par"
+        ),
+        "Field test: refresh and Continue restore entered scores"
+    );
+    assert(
+        evaluate(
+            "activeScorecardRound.currentHole === 2 && " +
+            "activeScorecardRound.holeCount === 9 && " +
+            "activeScorecardRound.courseId === 'whitinsville' && " +
+            "activeScorecardRound.hciUsed === 26.4 && " +
+            "simpleScorecard[0].tee === 'White/Blue'"
+        ),
+        "Field test: Continue restores hole, course, tee, hole count, and HCI"
+    );
+    assert(
+        !harness.document.getElementById("scorecardScreen").classList.contains("hidden"),
+        "Field test: Continue returns to the active scorecard"
+    );
+
+    const alertCountBeforeIncompleteSave = harness.alerts.length;
+    evaluate("saveScorecardRound()");
+    assert(
+        evaluate("getSavedRounds().length === 0") &&
+        harness.alerts.length === alertCountBeforeIncompleteSave + 1 &&
+        harness.alerts[harness.alerts.length - 1].includes("every hole"),
+        "Field test: incomplete completed-round save is blocked"
+    );
+    assert(
+        storage.has("gstActiveScorecardRound"),
+        "Field test: blocked save leaves the round active"
+    );
+
+    evaluate("abandonCurrentScorecardRound()");
+    homeCard = harness.document.getElementById("homeCard");
+    assert(
+        !storage.has("gstActiveScorecardRound") &&
+        !storage.has("simpleScorecard") &&
+        homeCard.style.display === "block",
+        "Field test: Abandon clears active progress and returns Home"
+    );
+
+    evaluate("startScorecardRound(18)");
+    assert(evaluate("simpleScorecard.length === 18"), "Smoke: 18-hole scorecard starts");
 
     evaluate("simpleScorecard.forEach(hole => { hole.score = hole.par; }); saveScorecardRound()");
     assert(
         JSON.parse(storage.get("savedScorecardRounds")).length === 1,
         "Smoke: scorecard round saves"
+    );
+    assert(
+        JSON.stringify(Object.keys(
+            JSON.parse(storage.get("savedScorecardRounds"))[0]
+        ).sort()) === JSON.stringify([
+            "courseId",
+            "courseName",
+            "date",
+            "hciUsed",
+            "holes",
+            "holesPlayed",
+            "id",
+            "mode",
+            "totalScore"
+        ]),
+        "Regression: completed saved-round structure is unchanged"
+    );
+
+    evaluate("startScorecardRound(9); increaseScore(0); abandonCurrentScorecardRound()");
+    assert(
+        JSON.parse(storage.get("savedScorecardRounds")).length === 1 &&
+        !storage.has("gstActiveScorecardRound"),
+        "Field test: Abandon preserves completed saved rounds"
     );
 
     evaluate("showRecentRounds()");
@@ -611,6 +735,7 @@ async function main() {
     verifyGlobalHandlers(indexHtml, indexVerification.scriptSources);
     verifyValidStorageStartup(indexHtml, indexVerification.scriptSources);
     verifyMalformedStorageStartup(indexHtml, indexVerification.scriptSources);
+    verifyLegacyScorecardMigration(indexHtml, indexVerification.scriptSources);
     verifyCoreDomSmoke(indexHtml, indexVerification.scriptSources);
     await verifyHttpAssets(indexVerification.assetReferences);
 

@@ -88,6 +88,47 @@ The verifier checks:
 - [ ] Existing shot-tracking round setup, shot entry, hole score, navigation, export, and clear actions still work.
 - [ ] No unexpected console errors appear during the checklist.
 
+### Field-Test Hardening Checklist
+
+Use a test browser profile so the steps do not mix with real golf data.
+
+#### Resume and Autosave
+
+1. Start a new 9-hole scorecard round.
+2. Enter scores on at least three different holes with the `+` and `−` controls.
+3. Remember the last hole changed and its displayed score. In desktop developer tools, note `currentHole` inside the `gstActiveScorecardRound` LocalStorage value.
+4. Refresh the page while the round is incomplete.
+5. Confirm the Home screen loads normally.
+6. Select Continue.
+7. Confirm the 9-hole scorecard reopens.
+8. Confirm every entered score is restored.
+9. Confirm the last changed hole is retained in `gstActiveScorecardRound.currentHole` after refresh.
+10. Confirm the original course, tee data, hole count, and starting HCI are retained.
+
+#### Incomplete Save Protection
+
+1. Leave at least one hole without a score.
+2. Select Save Round.
+3. Confirm a clear incomplete-round message appears.
+4. Confirm no partial completed round is added to Recent Rounds.
+5. Return Home, select Continue, and confirm the incomplete round remains active.
+
+#### Abandon Active Round
+
+1. Ensure at least one completed round already exists in Recent Rounds.
+2. Start another scorecard round and enter at least one score.
+3. Select Abandon Current Round.
+4. Cancel the confirmation once and confirm the active scorecard remains open.
+5. Select Abandon Current Round again and confirm abandonment.
+6. Confirm the app returns Home.
+7. Select Continue and confirm the abandoned scorecard is no longer available.
+8. Open Recent Rounds and confirm the previously completed round still exists.
+9. Confirm Stats still uses the previously completed round.
+
+#### Corrupted Progress Recovery
+
+This is covered automatically by `node scripts/verify-app.js`. Do not corrupt LocalStorage manually in a real user profile.
+
 ## GitHub Pages and Phone Test
 
 Run this checklist after pushing the intended release commit and confirming GitHub Pages deployment completed.
@@ -98,6 +139,8 @@ Run this checklist after pushing the intended release commit and confirming GitH
 - [ ] Home tiles and score controls respond correctly to touch.
 - [ ] The complete local manual smoke checklist passes on the phone where practical.
 - [ ] Saving data and refreshing the deployed page preserves LocalStorage data.
+- [ ] Incomplete active-round scores survive refresh and Continue on the phone.
+- [ ] Current-hole restoration and Abandon Current Round work through the deployed page.
 - [ ] Add to Home Screen still offers the GST icon and launches the deployed app successfully.
 - [ ] Data saved in the normal browser and home-screen shortcut behaves consistently for the platform being tested.
 

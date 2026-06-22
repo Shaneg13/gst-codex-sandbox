@@ -8,10 +8,11 @@ A build-free, browser-based golf round, scorecard, shot, statistics, course, and
 2. [Project Structure](#project-structure)
 3. [Application Logic](#application-logic)
 4. [Persistence](#persistence)
-5. [Verification](#verification)
-6. [Deployment](#deployment)
-7. [Development Rules](#development-rules)
-8. [Lessons and Recommendations](#lessons-and-recommendations)
+5. [Active Scorecard Persistence](#active-scorecard-persistence)
+6. [Verification](#verification)
+7. [Deployment](#deployment)
+8. [Development Rules](#development-rules)
+9. [Lessons and Recommendations](#lessons-and-recommendations)
 
 ## Run Locally
 
@@ -75,6 +76,23 @@ All data is stored in browser LocalStorage. Existing key names and saved object 
 
 The app defensively falls back to existing defaults when a JSON value is malformed. It does not rename, migrate, or rewrite valid stored data during startup.
 
+## Active Scorecard Persistence
+
+In-progress scorecard rounds are stored under the versioned LocalStorage key `gstActiveScorecardRound`. The active record contains:
+
+- Schema version
+- Course ID
+- Hole count
+- Current hole
+- Handicap Index used when the round started
+- Existing scorecard hole objects and entered scores
+
+Every score `+` or `−` action immediately updates the active record. The Home-screen Continue tile restores the course, tee data, hole count, current hole, scores, and starting HCI after refresh or reopening the app.
+
+For backward compatibility, the app continues writing `simpleScorecard` and `scorecardHoleCount`. Valid legacy `simpleScorecard` progress is migrated automatically to `gstActiveScorecardRound`. Malformed active or legacy progress is cleared safely without changing `savedScorecardRounds`.
+
+A scorecard cannot be added to completed Recent Rounds while any required score is missing. The active progress remains available to continue later. `Abandon Current Round` requires confirmation and clears only active scorecard progress; completed rounds, profile data, Stats history, Course Info, and Head-to-Head data remain unchanged.
+
 ## Verification
 
 Before every commit, run the complete npm-free verification command from the repository root:
@@ -84,6 +102,8 @@ node scripts/verify-app.js
 ```
 
 The verifier checks every JavaScript file with `node --check`, validates script order and asset references, executes the app with valid and malformed LocalStorage, confirms global HTML handlers, runs representative DOM smoke flows, and serves every app asset through a temporary local HTTP server to require HTTP 200 responses.
+
+Field-test verification also covers active-round autosave, refresh and Continue restoration, current-hole restoration, incomplete-save blocking, abandon isolation, corrupted active data, and migration from legacy scorecard progress.
 
 No npm install or build step is required. A failed check exits with a nonzero status and prints the failing condition.
 

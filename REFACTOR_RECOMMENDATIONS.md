@@ -72,6 +72,7 @@ Current keys that form compatibility contracts include:
 - `scorecardHoleCount`
 - `gstPlayerProfile`
 - `gstH2HMatch`
+- `gstActiveScorecardRound`
 
 ### 5. State Management
 
@@ -150,6 +151,13 @@ For this behavior-preserving pass:
 3. Add Head-to-Head fixtures for ties, both winners, 9/18 holes, and multiple handicap ranges.
 4. Consider real-browser automation only when an external dependency is justified and static GitHub Pages behavior remains the deployment target.
 5. Add CI to run the npm-free verifier on proposed changes.
+
+### Field-Test Hardening Follow-ups
+
+1. Treat `gstActiveScorecardRound.version` as a migration boundary if the active-round schema changes.
+2. Add real-device lifecycle tests for backgrounding, force-closing, reopening, and Add to Home Screen storage behavior.
+3. Define an explicit one-active-round policy before allowing scorecard and shot-tracking rounds to coexist or switch without completion.
+4. Add a visible current-hole affordance only as a separately reviewed UI change; the current hardening pass preserves the existing layout.
 
 ## Important Logic and Data Contracts
 
