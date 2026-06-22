@@ -95,7 +95,7 @@ Statistics are computed directly from `savedScorecardRounds` during rendering. T
 
 ### 10. Future Development Readiness
 
-The project has no automated tests, lint configuration, formatting configuration, or documented data schema. The app should remain build-free for GitHub Pages, but lightweight browser tests and pure JavaScript logic tests can still be added later without changing deployment.
+The project now has an npm-free verification script covering syntax, script order, static assets, global handlers, LocalStorage startup, representative DOM flows, and localhost HTTP delivery. It still lacks real-browser automation, exhaustive scoring fixtures, lint configuration, formatting configuration, CI, and versioned data-schema documentation. The app should remain build-free for GitHub Pages while this coverage is expanded.
 
 ### 11. Fragile Areas
 
@@ -121,14 +121,14 @@ The first structural extraction is now complete. Storage helpers, shared state b
 
 ## Deferred Recommendations
 
-1. Add automated tests for scoring, handicap strokes, Head-to-Head results, saved-round rendering, and corrupted LocalStorage.
+1. Expand pure regression fixtures for scoring, handicap strokes, Head-to-Head results, and saved-round rendering before extracting those engines. Malformed LocalStorage startup now has baseline automated coverage.
 2. Extract pure calculation helpers from rendering functions.
 3. Define and document versioned schemas for saved rounds, shots, holes, player profiles, and Head-to-Head matches.
 4. Consolidate live and past scorecard construction behind tested shared helpers.
 5. Replace inline handlers with registered event listeners only after browser tests protect the current flow.
 6. Split feature code into build-free classic scripts or ES modules only after GitHub Pages compatibility is tested across target browsers.
 7. Add safe text-rendering helpers before expanding user-editable names or course data.
-8. Add a repository test command and CI workflow after the first test suite exists.
+8. Run `node scripts/verify-app.js` before every commit and add it to CI when repository automation is introduced.
 9. Extract the scorecard engine only after scoring and saved-round fixtures exist.
 10. Extract Head-to-Head only after handicap allocation and match-result fixtures exist.
 11. Extract stats calculations only after historical-round fixtures exist.
@@ -138,13 +138,18 @@ The first structural extraction is now complete. Storage helpers, shared state b
 
 For this behavior-preserving pass:
 
-1. Run `node --check app.js`.
-2. Check the Git diff for whitespace and accidental copy/theme changes.
-3. Confirm every HTML `src` and `href` asset exists.
-4. Serve the repository through a local static HTTP server.
-5. Confirm `index.html`, `app.js`, `style.css`, and all PNG assets return HTTP 200.
-6. Confirm the served page contains the home screen and `Beta Testing` label.
-7. Confirm the final commit contains only the intended refactor and documentation.
+1. Run `node scripts/verify-app.js` before every commit.
+2. Check the Git diff for accidental copy, theme, scoring, handicap, Head-to-Head, key, or data-structure changes.
+3. Use `TEST_PLAN.md` for manual browser, GitHub Pages, phone, and Add to Home Screen verification.
+4. Confirm the final commit contains only the intended implementation and documentation.
+
+### Testing Next Steps
+
+1. Add table-driven pure-function fixtures before extracting scoring or handicap calculations.
+2. Add saved-round fixtures covering 9-hole, 18-hole, incomplete, historical, and legacy browser data.
+3. Add Head-to-Head fixtures for ties, both winners, 9/18 holes, and multiple handicap ranges.
+4. Consider real-browser automation only when an external dependency is justified and static GitHub Pages behavior remains the deployment target.
+5. Add CI to run the npm-free verifier on proposed changes.
 
 ## Important Logic and Data Contracts
 

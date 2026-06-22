@@ -34,6 +34,8 @@ Then open `http://127.0.0.1:8765/index.html`.
 - `js/navigation.js` — shared screen visibility mechanics.
 - `js/utils.js` — general-purpose, behavior-independent utilities.
 - `app.js` — course data, feature logic, rendering, feature navigation, global HTML handlers, and startup.
+- `scripts/verify-app.js` — npm-free syntax, structure, startup, DOM smoke, persistence, and HTTP verifier.
+- `TEST_PLAN.md` — local browser, GitHub Pages, phone, and Add to Home Screen test procedures.
 - `golfshottracker.png` — splash-screen artwork.
 - `golfshottrackericon.png` — browser and home-screen icon.
 - `gstbanner.png` — application header banner.
@@ -75,19 +77,22 @@ The app defensively falls back to existing defaults when a JSON value is malform
 
 ## Verification
 
-Run JavaScript syntax verification for every classic script:
+Before every commit, run the complete npm-free verification command from the repository root:
 
 ```powershell
-Get-ChildItem app.js,js\*.js | ForEach-Object { node --check $_.FullName }
+node scripts/verify-app.js
 ```
 
-For a release check:
+The verifier checks every JavaScript file with `node --check`, validates script order and asset references, executes the app with valid and malformed LocalStorage, confirms global HTML handlers, runs representative DOM smoke flows, and serves every app asset through a temporary local HTTP server to require HTTP 200 responses.
 
-1. Serve the repository through local HTTP.
-2. Confirm `index.html`, every JavaScript file, `style.css`, and all PNG assets return HTTP 200.
-3. Confirm the home screen loads and retains the `Beta Testing` label.
-4. Exercise scorecard, shot tracking, recent rounds, stats, course information, Handicap Index, and Head-to-Head flows.
-5. Confirm the Git working tree is clean after committing.
+No npm install or build step is required. A failed check exits with a nonzero status and prints the failing condition.
+
+For a release check, also follow [TEST_PLAN.md](TEST_PLAN.md):
+
+1. Complete the local manual browser smoke checklist.
+2. Confirm no unexpected browser-console errors.
+3. Complete the GitHub Pages phone and Add to Home Screen checklist.
+4. Confirm the Git working tree is clean after committing.
 
 ## Deployment
 
@@ -100,6 +105,7 @@ The repository is deployable directly through GitHub Pages. Publish the reposito
 - Keep scoring and Head-to-Head changes separate from structural refactors.
 - Maintain the dark GST theme and current navigation flow.
 - Add regression tests before extracting the remaining feature engines.
+- Run `node scripts/verify-app.js` before every commit.
 - Keep documentation current when behavior, data contracts, setup, or deployment changes.
 
 ## Lessons and Recommendations
