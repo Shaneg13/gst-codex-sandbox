@@ -105,16 +105,29 @@ The verifier checks:
 13. Enter both scores on a hole.
 14. Confirm the label reads exactly `Current Hole Result:`.
 15. Confirm both players' gross score, strokes received, and net score are displayed.
-16. Confirm the lower-HCI player receives zero strokes.
-17. Confirm the higher-HCI player receives the HCI difference by hole HCP/stroke index.
-18. Confirm equal net scores display `Hole halved`.
-19. Confirm the net hole winner and top match status update immediately.
-20. Repeat with an 18-hole match and confirm all 18 holes appear.
-21. Return to Head-to-Head and open Compare Gross and Net Scores.
-22. Enter both gross scores and the opponent HCI, then confirm the existing comparison result still works.
-23. Open regular Scorecard Mode and confirm its layout and score controls remain unchanged.
+16. Use G-Well HCI `25.6`, opponent HCI `7.4`, and a 9-hole match.
+17. Confirm the displayed Playing Handicaps are G-Well `16` and opponent `5`.
+18. Confirm the lower Playing Handicap player receives zero relative match strokes.
+19. Confirm G-Well receives 11 relative match strokes: one on every hole and a second stroke on holes 6 and 9.
+20. On a one-stroke hole, enter G-Well gross `6` and opponent gross `5`.
+21. Confirm both net scores are `5` and the result displays `Hole halved`.
+22. Confirm a net hole winner and the top match status update immediately when either gross score changes.
+23. Before completing the match, confirm Save Match is hidden. If invoked through developer tools, confirm saving is blocked with a clear message and no records are added.
+24. Enter both players' gross scores on every hole and confirm Save Match appears.
+25. Note G-Well's gross total, the opponent's gross total, and the final match status.
+26. Select Save Match and confirm the message says G-Well's round and the Versus-opponent match were saved.
+27. Confirm Recent Rounds contains a normal scorecard card for G-Well and a separate card labeled `H2H Match`.
+28. Confirm the H2H card shows `Versus [Opponent]`, date, Win/Loss/Tie, final match status, and both gross totals.
+29. Open the normal scorecard detail and confirm it contains only G-Well's gross scores and correct totals.
+30. Open Stats and confirm G-Well's H2H scorecard contributes once to Hole Averages.
+31. Confirm H2H Record shows the correct Wins, Losses, and Ties and the separate match record is not counted as another normal round.
+32. Refresh the app and confirm both Recent Rounds records and H2H record Stats remain available.
+33. Repeat with an 18-hole match and the same HCIs. Confirm all 18 holes appear, the Playing Handicaps are `33` and `10`, and the 23-stroke difference gives one stroke per hole plus a second stroke on HCP 1–5.
+34. Return to Head-to-Head and open Compare Gross and Net Scores.
+35. Enter both gross scores and the opponent HCI, then confirm the existing comparison result still works.
+36. Open regular Scorecard Mode and confirm its layout, score controls, and save behavior remain unchanged.
 
-Match-play inputs remain gross scores. Hole results and the running match are decided by calculated net scores.
+Match-play inputs remain gross scores. Hole results and the running match are decided by calculated net scores. H2H strokes must come from the difference between the rounded Playing Handicaps, never directly from the raw HCI difference. Completed matches write `gstH2HMatches`; G-Well's linked scorecard remains in `savedScorecardRounds` and contains no opponent scores.
 
 ### Field-Test Hardening Checklist
 

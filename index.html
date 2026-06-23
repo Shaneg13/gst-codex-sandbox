@@ -10,7 +10,7 @@
     <!-- Optional browser tab icon -->
     <link rel="icon" type="image/png" href="golfshottrackericon.png?v=2">
 
-    <link rel="stylesheet" href="style.css?v=15">
+    <link rel="stylesheet" href="style.css?v=16">
 </head>
 
 <body>
@@ -189,6 +189,27 @@
         </button>
     </div>
 
+    <section class="h2h-record-card" aria-labelledby="h2hRecordHeading">
+        <h3 id="h2hRecordHeading">H2H Record</h3>
+
+        <div class="h2h-record-stats">
+            <div>
+                <span>Wins</span>
+                <strong id="h2hStatsWins">0</strong>
+            </div>
+
+            <div>
+                <span>Losses</span>
+                <strong id="h2hStatsLosses">0</strong>
+            </div>
+
+            <div>
+                <span>Ties</span>
+                <strong id="h2hStatsTies">0</strong>
+            </div>
+        </div>
+    </section>
+
     <div id="holeAverageStatsList" class="hole-average-stats-list"></div>
 
     <button onclick="showHome()" class="secondary-button">
@@ -233,7 +254,7 @@
 <div id="recentRoundsScreen" class="card hidden">
 
     <h2>Recent Rounds</h2>
-    <p class="section-subtitle">Saved scorecard rounds</p>
+    <p class="section-subtitle">Saved scorecard rounds and H2H matches</p>
 
     <button onclick="showPastRoundEntry()" class="primary-button">
         Add Round
@@ -456,6 +477,10 @@
 
     <div id="h2hMatchGrid" class="scorecard-grid"></div>
 
+    <button id="saveH2HMatchButton" onclick="saveH2HMatch()" class="primary-button hidden">
+        Save Match
+    </button>
+
     <button onclick="showH2HModePicker()" class="secondary-button">
         Back to Head-to-Head
     </button>
@@ -501,11 +526,11 @@
 </div>
 
 <!-- Classic scripts share the global scope; dependency order is required. -->
-<script src="js/storage.js?v=2"></script>
+<script src="js/storage.js?v=3"></script>
 <script src="js/state.js?v=2"></script>
 <script src="js/navigation.js?v=1"></script>
 <script src="js/utils.js?v=1"></script>
-<script src="app.js?v=18"></script>
+<script src="app.js?v=20"></script>
 
 <div id="roundModePopup" class="modal hidden">
     <div class="modal-content round-mode-modal">

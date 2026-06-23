@@ -356,6 +356,11 @@ function verifyValidStorageStartup(indexHtml, scriptSources) {
         shots: "[]",
         holes: "[]",
         savedScorecardRounds: "[]",
+        gstH2HMatches: JSON.stringify([{
+            id: 456,
+            type: "h2h-match",
+            result: "win"
+        }]),
         gstPlayerProfile: JSON.stringify({
             name: "G-Well",
             hci: 26.4
@@ -368,7 +373,8 @@ function verifyValidStorageStartup(indexHtml, scriptSources) {
     assert(
         harness.evaluate(
             "currentHole === 3 && currentRound.id === 123 && " +
-            "Array.isArray(shots) && Array.isArray(holes) && playerProfile.hci === 26.4"
+            "Array.isArray(shots) && Array.isArray(holes) && playerProfile.hci === 26.4 && " +
+            "getSavedH2HMatches().length === 1"
         ),
         "App initializes with valid LocalStorage"
     );
@@ -381,6 +387,7 @@ function verifyMalformedStorageStartup(indexHtml, scriptSources) {
         shots: "{invalid json",
         holes: "{invalid json",
         savedScorecardRounds: "{invalid json",
+        gstH2HMatches: "{invalid json",
         gstPlayerProfile: "{invalid json",
         gstActiveScorecardRound: "{invalid json"
     });
@@ -392,7 +399,7 @@ function verifyMalformedStorageStartup(indexHtml, scriptSources) {
             "currentRound === null && Array.isArray(shots) && shots.length === 0 && " +
             "Array.isArray(holes) && holes.length === 0 && getSavedRounds().length === 0 && " +
             "playerProfile.name === 'G-Well' && playerProfile.hci === 26.4 && " +
-            "activeScorecardRound === null"
+            "activeScorecardRound === null && getSavedH2HMatches().length === 0"
         ),
         "App initializes safely with malformed LocalStorage"
     );
@@ -401,7 +408,7 @@ function verifyMalformedStorageStartup(indexHtml, scriptSources) {
         "Malformed active scorecard data is cleared safely"
     );
     assert(harness.consoleErrors.length === 0, "Malformed startup has no console errors");
-    assert(harness.consoleWarnings.length >= 6, "Malformed values use defensive fallbacks");
+    assert(harness.consoleWarnings.length >= 7, "Malformed values use defensive fallbacks");
 }
 
 function verifyLegacyScorecardMigration(indexHtml, scriptSources) {
@@ -624,17 +631,69 @@ function verifyCoreDomSmoke(indexHtml, scriptSources) {
         "H2H: player name and HCI default from the profile"
     );
 
+    harness.document.getElementById("h2hPlayerHci").value = "25.6";
     harness.document.getElementById("h2hOpponentName").value = "Mike";
-    harness.document.getElementById("h2hOpponentHci").value = "7";
+    harness.document.getElementById("h2hOpponentHci").value = "7.4";
     evaluate("startH2HHoleByHole(9)");
     assert(
         !harness.document.getElementById("h2hMatchScreen").classList.contains("hidden") &&
         evaluate(
             "h2hMatch.holes.length === 9 && " +
+            "h2hMatch.players[0].hci === 25.6 && " +
             "h2hMatch.players[1].name === 'Mike' && " +
-            "h2hMatch.players[1].hci === 7"
+            "h2hMatch.players[1].hci === 7.4"
         ),
         "H2H: 9-hole match scorecard starts from setup inputs"
+    );
+    assert(
+        harness.document.getElementById("saveH2HMatchButton").classList.contains("hidden"),
+        "H2H save: Save Match stays hidden while scores are incomplete"
+    );
+    const alertCountBeforeIncompleteH2HSave = harness.alerts.length;
+    evaluate("saveH2HMatch()");
+    assert(
+        evaluate("getSavedRounds().length === 1 && getSavedH2HMatches().length === 0"),
+        "H2H save: incomplete attempt creates no scorecard or match records"
+    );
+    assert(
+        harness.alerts.length === alertCountBeforeIncompleteH2HSave + 1 &&
+        harness.alerts[harness.alerts.length - 1].includes("every hole"),
+        "H2H save: incomplete attempts show a clear message"
+    );
+    evaluate(
+        "saveSavedH2HMatches([{ " +
+            "id: 100, type: 'h2h-match', date: '6/1/2026', " +
+            "playerName: 'G-Well', opponentName: 'Alex', result: 'loss', " +
+            "finalMatchStatus: 'Alex 1 Up', playerTotalGross: 41, opponentTotalGross: 40, holes: [] " +
+        "}])"
+    );
+    assert(
+        evaluate(
+            "getH2HPlayingHandicap(25.6, 9) === 16 && " +
+            "getH2HPlayingHandicap(7.4, 9) === 5 && " +
+            "getH2HMatchPlayingHandicaps().difference === 11 && " +
+            "getH2HMatchPlayingHandicaps().receivingPlayer === 'player1'"
+        ),
+        "H2H WHS: 9-hole Playing Handicaps are 16 and 5 with an 11-stroke difference"
+    );
+    assert(
+        evaluate(
+            "h2hMatch.holes.every(function(hole) { " +
+                "return getH2HMatchPlayStrokesForHole(hole).player1 >= 1 && " +
+                    "getH2HMatchPlayStrokesForHole(hole).player2 === 0; " +
+            "}) && " +
+            "getH2HMatchPlayStrokesForHole(h2hMatch.holes.find(function(hole) { return hole.holeNumber === 6; })).player1 === 2 && " +
+            "getH2HMatchPlayStrokesForHole(h2hMatch.holes.find(function(hole) { return hole.holeNumber === 9; })).player1 === 2 && " +
+            "h2hMatch.holes.filter(function(hole) { return hole.holeNumber !== 6 && hole.holeNumber !== 9; }).every(function(hole) { " +
+                "return getH2HMatchPlayStrokesForHole(hole).player1 === 1; " +
+            "})"
+        ),
+        "H2H WHS: 11 strokes give one per hole plus extras on holes 6 and 9"
+    );
+    assert(
+        harness.document.getElementById("h2hMatchPlayers").textContent ===
+            "G-Well PH 16 vs Mike PH 5",
+        "H2H WHS: both Playing Handicaps are visible on the match scorecard"
     );
 
     let h2hFirstHole = harness.document.getElementById("h2hMatchGrid").children[0];
@@ -674,7 +733,7 @@ function verifyCoreDomSmoke(indexHtml, scriptSources) {
             "getH2HMatchPlayStrokesForHole(h2hMatch.holes[0]).player2 === 0 && " +
             "getH2HNetScore(6, 1) === 5"
         ),
-        "H2H net: higher HCI receives the difference and lower HCI is scratch"
+        "H2H net: higher Playing Handicap receives strokes and lower Playing Handicap is scratch"
     );
     assert(
         h2hFirstHole.innerHTML.includes("Hole halved") &&
@@ -688,19 +747,131 @@ function verifyCoreDomSmoke(indexHtml, scriptSources) {
     h2hFirstHole = harness.document.getElementById("h2hMatchGrid").children[0];
     assert(
         h2hFirstHole.innerHTML.includes("G-Well wins hole") &&
-        harness.document.getElementById("h2hMatchStatus").textContent === "G-Well 1 Up",
-        "H2H net: net hole winner updates the running match status"
+        harness.document.getElementById("h2hMatchStatus").textContent === "G-Well 1 Up" &&
+        evaluate("getH2HMatchScore(0) === 1"),
+        "H2H net: numeric match score updates the displayed running status"
     );
     assert(
         storage.has("gstH2HMatch"),
         "H2H: existing active-match LocalStorage key remains compatible"
     );
 
-    evaluate("showH2HModePicker(); openH2HHoleByHole(); startH2HHoleByHole(18)");
+    evaluate(
+        "h2hMatch.holes.forEach(function(hole, index) { " +
+            "h2hMatch.scores[index].player1 = hole.par + 1; " +
+            "h2hMatch.scores[index].player2 = hole.par; " +
+        "}); renderH2HMatchScorecard();"
+    );
+    assert(
+        !harness.document.getElementById("saveH2HMatchButton").classList.contains("hidden") &&
+        evaluate(
+            "isH2HMatchComplete() && getH2HMatchScore() === 2 && " +
+            "getH2HMatchResult() === 'win' && " +
+            "getH2HMatchPlayStatus(8) === 'G-Well 2 Up'"
+        ),
+        "H2H save: completed match exposes Save Match and uses numeric final result logic"
+    );
+
+    const alertCountBeforeCompletedH2HSave = harness.alerts.length;
+    evaluate("saveH2HMatch()");
+    assert(
+        evaluate(
+            "getSavedRounds().length === 2 && getSavedH2HMatches().length === 2 && " +
+            "getSavedH2HMatches().some(function(match) { return match.opponentName === 'Alex'; })"
+        ) &&
+        !storage.has("gstH2HMatch"),
+        "H2H save: both new records append without overwriting existing history"
+    );
+    assert(
+        evaluate(
+            "(function() { " +
+                "var round = getSavedRounds().find(function(item) { return item.source === 'h2h-match'; }); " +
+                "var match = getSavedH2HMatches().find(function(item) { return item.opponentName === 'Mike'; }); " +
+                "return round.type === 'scorecard' && " +
+                    "round.linkedH2HMatchId === match.id && " +
+                    "round.holesPlayed === 9 && round.hciUsed === 25.6 && " +
+                    "round.totalScore === 44 && round.totalPar === 35 && round.toPar === 9 && " +
+                    "round.holes.every(function(hole) { " +
+                        "return hole.score !== null && !('opponentGross' in hole) && !('opponentScore' in hole); " +
+                    "}) && JSON.stringify(round).indexOf('Mike') === -1; " +
+            "})()"
+        ),
+        "H2H save: G-Well scorecard record uses the normal round shape without opponent data"
+    );
+    assert(
+        evaluate(
+            "(function() { " +
+                "var match = getSavedH2HMatches().find(function(item) { return item.opponentName === 'Mike'; }); " +
+                "var hole6 = match.holes.find(function(hole) { return hole.holeNumber === 6; }); " +
+                "var hole9 = match.holes.find(function(hole) { return hole.holeNumber === 9; }); " +
+                "return match.type === 'h2h-match' && match.playerName === 'G-Well' && " +
+                    "match.playerHci === 25.6 && match.playerPlayingHandicap === 16 && " +
+                    "match.opponentName === 'Mike' && match.opponentHci === 7.4 && " +
+                    "match.opponentPlayingHandicap === 5 && match.matchStrokeDifference === 11 && " +
+                    "match.strokeReceiver === 'player' && match.playerTotalGross === 44 && " +
+                    "match.opponentTotalGross === 35 && match.matchScore === 2 && " +
+                    "match.finalMatchStatus === 'G-Well 2 Up' && match.result === 'win' && " +
+                    "match.holes.length === 9 && hole6.playerStrokes === 2 && " +
+                    "hole9.playerStrokes === 2 && hole6.holeResult === 'win' && " +
+                    "hole9.matchStatusAfterHole === 'G-Well 2 Up'; " +
+            "})()"
+        ),
+        "H2H save: separate match record contains handicaps, totals, result, and hole history"
+    );
+    assert(
+        harness.alerts.length === alertCountBeforeCompletedH2HSave + 1 &&
+        harness.alerts[harness.alerts.length - 1] ===
+            "Match saved. Your round was added to Recent Rounds, and the H2H match was saved as Versus Mike.",
+        "H2H save: confirmation identifies both saved records and the opponent"
+    );
+
+    const recentRoundCards = harness.document.getElementById("recentRoundsList").children;
+    const recentRoundCardHtml = recentRoundCards.map(function(wrapper) {
+        return wrapper.children[1].innerHTML;
+    }).join(" ");
+    assert(
+        recentRoundCards.length === 4 &&
+        recentRoundCardHtml.includes("H2H Match") &&
+        recentRoundCardHtml.includes("Versus Mike") &&
+        recentRoundCardHtml.includes("Result: Win — G-Well 2 Up") &&
+        recentRoundCardHtml.includes("Score: G-Well 44 | Mike 35"),
+        "Recent Rounds: normal rounds and the separate H2H match card are both rendered"
+    );
+
+    evaluate("showStats()");
+    assert(
+        harness.document.getElementById("h2hStatsWins").textContent === 1 &&
+        harness.document.getElementById("h2hStatsLosses").textContent === 1 &&
+        harness.document.getElementById("h2hStatsTies").textContent === 0,
+        "H2H stats: record is calculated only from saved H2H match results"
+    );
+    assert(
+        harness.document.getElementById("holeAverageStatsList").children[0]
+            .innerHTML.includes("2 rounds"),
+        "Stats: H2H scorecard feeds regular stats once without counting the match record"
+    );
+
+    evaluate("showH2HModePicker(); openH2HHoleByHole()");
+    harness.document.getElementById("h2hPlayerHci").value = "25.6";
+    harness.document.getElementById("h2hOpponentHci").value = "7.4";
+    evaluate("startH2HHoleByHole(18)");
     assert(
         evaluate("h2hMatch.holes.length === 18") &&
         harness.document.getElementById("h2hMatchGrid").children.length === 18,
         "H2H: 18-hole match scorecard starts"
+    );
+    assert(
+        evaluate(
+            "getH2HPlayingHandicap(25.6, 18) === 33 && " +
+            "getH2HPlayingHandicap(7.4, 18) === 10 && " +
+            "getH2HMatchPlayingHandicaps().difference === 23 && " +
+            "h2hMatch.holes.every(function(hole) { " +
+                "var strokes = getH2HMatchPlayStrokesForHole(hole); " +
+                "return strokes.player2 === 0 && " +
+                    "strokes.player1 === (hole.hcp <= 5 ? 2 : 1); " +
+            "})"
+        ),
+        "H2H WHS: 18-hole Playing Handicaps and 23-stroke allocation use White/Blue tee data"
     );
 
     evaluate("showH2HModePicker(); openH2HCompare()");
@@ -732,7 +903,8 @@ function verifyCoreDomSmoke(indexHtml, scriptSources) {
     const refreshedHarness = createAppHarness(indexHtml, scriptSources, storage);
     assert(
         refreshedHarness.evaluate(
-            "getSavedRounds().length === 1 && playerProfile.hci === 18.2"
+            "getSavedRounds().length === 2 && getSavedH2HMatches().length === 2 && " +
+            "playerProfile.hci === 18.2"
         ),
         "Smoke: refresh preserves saved data"
     );

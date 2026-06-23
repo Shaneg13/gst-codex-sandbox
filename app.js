@@ -7,6 +7,18 @@ const courses = {
         id: "whitinsville",
         name: "Whitinsville Golf Club",
         defaultCourse: true,
+        h2hTeeData: {
+            9: {
+                rating: 35.2,
+                slope: 137,
+                par: 35
+            },
+            18: {
+                rating: 71.2,
+                slope: 139,
+                par: 70
+            }
+        },
 
 whiteTees: [
     { hole: 1, par: 5, yards: 501, tee: "White/Blue", handicap: 8 },
@@ -1025,98 +1037,129 @@ function renderRecentRounds() {
     recentRoundsList.innerHTML = "";
 
     const savedRounds = getSavedRounds();
+    const savedH2HMatches = getSavedH2HMatches();
 
-    if (savedRounds.length === 0) {
+    if (savedRounds.length === 0 && savedH2HMatches.length === 0) {
         recentRoundsList.innerHTML =
             "<p class='empty-message'>No saved rounds yet.</p>";
         return;
     }
 
-    savedRounds
-        .sort(function(a, b) {
-            return b.id - a.id;
+    const recentItems = savedRounds.map(function(round) {
+        return { type: "scorecard", id: round.id, record: round };
+    }).concat(savedH2HMatches.map(function(match) {
+        return { type: "h2h-match", id: match.id, record: match };
+    }));
+
+    recentItems.sort(function(a, b) {
+        return b.id - a.id;
+    });
+
+    recentItems.forEach(function(item) {
+        if (item.type === "h2h-match") {
+            appendRecentH2HMatchCard(recentRoundsList, item.record);
+            return;
+        }
+
+        appendRecentScorecardCard(recentRoundsList, item.record);
+    });
+
+    enableSwipeRevealDelete();
+}
+
+function createRecentSwipeCard(recordId, deleteHandler) {
+    const swipeWrapper = document.createElement("div");
+    const deleteButton = document.createElement("button");
+    const card = document.createElement("div");
+
+    swipeWrapper.className = "round-swipe-wrapper";
+    deleteButton.className = "round-delete-action";
+    deleteButton.textContent = "Delete";
+    deleteButton.onclick = function(event) {
+        event.stopPropagation();
+        deleteHandler(recordId);
+    };
+    card.className = "recent-round-card swipe-front-card";
+
+    swipeWrapper.appendChild(deleteButton);
+    swipeWrapper.appendChild(card);
+
+    return { swipeWrapper, card };
+}
+
+function appendRecentScorecardCard(recentRoundsList, round) {
+    const completedHoles = Array.isArray(round.holes)
+        ? round.holes.filter(function(hole) {
+            return hole.score !== null && hole.score !== undefined;
         })
-        .forEach(function(round) {
+        : [];
+    const totalScore = completedHoles.reduce(function(sum, hole) {
+        return sum + hole.score;
+    }, 0);
+    const totalPar = completedHoles.reduce(function(sum, hole) {
+        return sum + hole.par;
+    }, 0);
+    const toPar = totalScore - totalPar;
+    let toParText = "E";
 
-            const completedHoles =
-                round.holes.filter(function(hole) {
-                    return hole.score !== null;
-                });
+    if (toPar > 0) toParText = "+" + toPar;
+    if (toPar < 0) toParText = toPar;
 
-            const totalScore =
-                completedHoles.reduce(function(sum, hole) {
-                    return sum + hole.score;
-                }, 0);
+    const recentCard = createRecentSwipeCard(round.id, deleteRound);
 
-            const totalPar =
-                completedHoles.reduce(function(sum, hole) {
-                    return sum + hole.par;
-                }, 0);
+    recentCard.card.onclick = function() {
+        if (recentCard.card.classList.contains("show-delete")) {
+            recentCard.card.classList.remove("show-delete");
+            return;
+        }
 
-            const toPar =
-                totalScore - totalPar;
+        showRoundDetail(round.id);
+    };
 
-            let toParText = "E";
+    recentCard.card.innerHTML = `
+        <div>
+            <strong>${round.courseName || "Whitinsville Golf Club"}</strong>
+            <span>${round.date} • ${round.holesPlayed || completedHoles.length} holes</span>
+        </div>
 
-            if (toPar > 0) {
-                toParText = "+" + toPar;
-            }
+        <div class="recent-round-score">
+            <strong>${totalScore}</strong>
+            <span>${toParText}</span>
+        </div>
+    `;
 
-            if (toPar < 0) {
-                toParText = toPar;
-            }
+    recentRoundsList.appendChild(recentCard.swipeWrapper);
+}
 
+function appendRecentH2HMatchCard(recentRoundsList, match) {
+    const recentCard = createRecentSwipeCard(match.id, deleteH2HMatch);
+    const resultLabels = {
+        win: "Win",
+        loss: "Loss",
+        tie: "Tie"
+    };
+    const playerName = match.playerName || "G-Well";
+    const opponentName = match.opponentName || "Opponent";
+    const resultLabel = resultLabels[match.result] || "Unknown";
 
-const swipeWrapper =
-    document.createElement("div");
+    recentCard.card.classList.add("h2h-recent-match-card");
+    recentCard.card.onclick = function() {
+        recentCard.card.classList.remove("show-delete");
+    };
+    recentCard.card.innerHTML = `
+        <div class="h2h-recent-match-main">
+            <strong>H2H Match</strong>
+            <span>Versus ${opponentName}</span>
+            <span>${match.date || "Saved match"}</span>
+        </div>
 
-swipeWrapper.className = "round-swipe-wrapper";
+        <div class="h2h-recent-match-result">
+            <strong>Result: ${resultLabel} — ${match.finalMatchStatus || "All Square"}</strong>
+            <span>Score: ${playerName} ${match.playerTotalGross} | ${opponentName} ${match.opponentTotalGross}</span>
+        </div>
+    `;
 
-const deleteButton =
-    document.createElement("button");
-
-deleteButton.className = "round-delete-action";
-deleteButton.textContent = "Delete";
-
-deleteButton.onclick = function(event) {
-    event.stopPropagation();
-    deleteRound(round.id);
-};
-
-const roundDiv =
-    document.createElement("div");
-
-roundDiv.className = "recent-round-card swipe-front-card";
-
-roundDiv.onclick = function() {
-    if (roundDiv.classList.contains("show-delete")) {
-        roundDiv.classList.remove("show-delete");
-        return;
-    }
-
-    showRoundDetail(round.id);
-};
-
-roundDiv.innerHTML = `
-    <div>
-        <strong>${round.courseName || "Whitinsville Golf Club"}</strong>
-        <span>${round.date} • ${round.holesPlayed || completedHoles.length} holes</span>
-    </div>
-
-    <div class="recent-round-score">
-        <strong>${totalScore}</strong>
-        <span>${toParText}</span>
-    </div>
-`;
-
-swipeWrapper.appendChild(deleteButton);
-swipeWrapper.appendChild(roundDiv);
-
-recentRoundsList.appendChild(swipeWrapper);
-
-        });
-        
-enableSwipeRevealDelete();
+    recentRoundsList.appendChild(recentCard.swipeWrapper);
 }
 
 function showRoundDetail(roundId) {
@@ -1589,6 +1632,8 @@ function startH2HHoleByHole(holeCount) {
 
     h2hMatch = {
         mode: "holeByHole",
+        courseId: selectedCourseId,
+        courseName: courses[selectedCourseId].name,
         holeCount: holeCount,
         currentHole: 1,
         players: [
@@ -1759,38 +1804,117 @@ function renderH2HHole() {
     renderH2HMatchScorecard();
 }
 
-// H2H match-play net scoring helpers.
-function getH2HMatchPlayStrokesFromDifference(holeHandicap, hciDifference) {
-    const normalizedDifference = Math.max(0, Number(hciDifference) || 0);
-    const fullRoundsOfStrokes = Math.floor(normalizedDifference / 18);
-    const remainingStrokes = normalizedDifference - (fullRoundsOfStrokes * 18);
+// H2H match-play Playing Handicap and net-scoring helpers.
+function getH2HTeeData(holeCount) {
+    const courseId = h2hMatch?.courseId || selectedCourseId;
+    const course = courses[courseId];
 
-    return fullRoundsOfStrokes +
-        (remainingStrokes >= holeHandicap ? 1 : 0);
+    return course?.h2hTeeData?.[Number(holeCount)] || null;
+}
+
+function getH2HPlayingHandicap(handicapIndex, holeCount) {
+    const teeData = getH2HTeeData(holeCount);
+
+    if (!teeData) {
+        return 0;
+    }
+
+    const fullHandicapIndex = Number(handicapIndex) || 0;
+    const adjustedHandicapIndex = Number(holeCount) === 9
+        ? Math.round((fullHandicapIndex / 2) * 10) / 10
+        : fullHandicapIndex;
+    const unroundedCourseHandicap =
+        adjustedHandicapIndex * (teeData.slope / 113) +
+        (teeData.rating - teeData.par);
+
+    // Individual match play uses a 100% allowance, so Course Handicap and
+    // Playing Handicap are the same before the final whole-number rounding.
+    return Math.round(unroundedCourseHandicap);
+}
+
+function getH2HMatchPlayingHandicaps() {
+    if (!h2hMatch) {
+        return {
+            player1: 0,
+            player2: 0,
+            difference: 0,
+            receivingPlayer: null
+        };
+    }
+
+    const player1PlayingHandicap = getH2HPlayingHandicap(
+        h2hMatch.players[0].hci,
+        h2hMatch.holeCount
+    );
+    const player2PlayingHandicap = getH2HPlayingHandicap(
+        h2hMatch.players[1].hci,
+        h2hMatch.holeCount
+    );
+    const difference = Math.abs(
+        player1PlayingHandicap - player2PlayingHandicap
+    );
+    let receivingPlayer = null;
+
+    if (player1PlayingHandicap > player2PlayingHandicap) {
+        receivingPlayer = "player1";
+    }
+
+    if (player2PlayingHandicap > player1PlayingHandicap) {
+        receivingPlayer = "player2";
+    }
+
+    return {
+        player1: player1PlayingHandicap,
+        player2: player2PlayingHandicap,
+        difference,
+        receivingPlayer
+    };
+}
+
+function getH2HHoleDifficultyRank(hole) {
+    if (!h2hMatch) return 0;
+
+    const holesByDifficulty = h2hMatch.holes.slice().sort(function(a, b) {
+        return a.hcp - b.hcp || a.holeNumber - b.holeNumber;
+    });
+
+    return holesByDifficulty.findIndex(function(matchHole) {
+        return matchHole.holeNumber === hole.holeNumber;
+    }) + 1;
+}
+
+function getH2HMatchPlayStrokesFromDifference(hole, matchStrokeDifference) {
+    if (!h2hMatch || h2hMatch.holeCount < 1) return 0;
+
+    const normalizedDifference = Math.max(
+        0,
+        Math.round(Number(matchStrokeDifference) || 0)
+    );
+    const baseStrokes = Math.floor(
+        normalizedDifference / h2hMatch.holeCount
+    );
+    const extraStrokes = normalizedDifference % h2hMatch.holeCount;
+    const difficultyRank = getH2HHoleDifficultyRank(hole);
+
+    return baseStrokes +
+        (difficultyRank > 0 && difficultyRank <= extraStrokes ? 1 : 0);
 }
 
 function getH2HMatchPlayStrokesForHole(hole) {
-    if (!h2hMatch) {
+    const playingHandicaps = getH2HMatchPlayingHandicaps();
+
+    if (!playingHandicaps.receivingPlayer) {
         return { player1: 0, player2: 0 };
     }
 
-    const player1Hci = Number(h2hMatch.players[0].hci) || 0;
-    const player2Hci = Number(h2hMatch.players[1].hci) || 0;
-    const hciDifference = Math.abs(player1Hci - player2Hci);
     const strokesReceived = getH2HMatchPlayStrokesFromDifference(
-        hole.hcp,
-        hciDifference
+        hole,
+        playingHandicaps.difference
     );
 
-    if (player1Hci > player2Hci) {
-        return { player1: strokesReceived, player2: 0 };
-    }
-
-    if (player2Hci > player1Hci) {
-        return { player1: 0, player2: strokesReceived };
-    }
-
-    return { player1: 0, player2: 0 };
+    return playingHandicaps.receivingPlayer === "player1"
+        ? { player1: strokesReceived, player2: 0 }
+        : { player1: 0, player2: strokesReceived };
 }
 
 function getH2HNetScore(grossScore, strokesReceived) {
@@ -1824,59 +1948,259 @@ function getH2HMatchPlayHoleScores(holeIndex) {
 function getH2HMatchPlayHoleResult(holeIndex) {
     if (!h2hMatch) return "";
 
-    const scores = getH2HMatchPlayHoleScores(holeIndex);
     const player1 = h2hMatch.players[0];
     const player2 = h2hMatch.players[1];
+    const outcome = getH2HMatchPlayHoleOutcome(holeIndex);
 
-    if (scores.net.player1 === null || scores.net.player2 === null) {
+    if (outcome === null) {
         return "Enter both scores";
     }
 
-    if (scores.net.player1 < scores.net.player2) {
+    if (outcome === "win") {
         return `${player1.name} wins hole`;
     }
 
-    if (scores.net.player2 < scores.net.player1) {
+    if (outcome === "loss") {
         return `${player2.name} wins hole`;
     }
 
     return "Hole halved";
 }
 
+function getH2HMatchPlayHoleOutcome(holeIndex) {
+    if (!h2hMatch) return null;
+
+    const scores = getH2HMatchPlayHoleScores(holeIndex);
+
+    if (scores.net.player1 === null || scores.net.player2 === null) {
+        return null;
+    }
+
+    if (scores.net.player1 < scores.net.player2) return "win";
+    if (scores.net.player2 < scores.net.player1) return "loss";
+
+    return "tie";
+}
+
+function getH2HMatchScore(lastHoleIndex) {
+    if (!h2hMatch) return 0;
+
+    let matchScore = 0;
+    const finalHoleIndex = Number.isInteger(lastHoleIndex)
+        ? lastHoleIndex
+        : h2hMatch.holeCount - 1;
+
+    h2hMatch.scores.forEach(function(unusedScores, holeIndex) {
+        if (holeIndex > finalHoleIndex) return;
+
+        const outcome = getH2HMatchPlayHoleOutcome(holeIndex);
+
+        if (outcome === "win") matchScore++;
+        if (outcome === "loss") matchScore--;
+    });
+
+    return matchScore;
+}
+
+function getH2HMatchResult() {
+    const matchScore = getH2HMatchScore();
+
+    if (matchScore > 0) return "win";
+    if (matchScore < 0) return "loss";
+
+    return "tie";
+}
+
 function getH2HMatchPlayStatus(lastHoleIndex) {
     if (!h2hMatch) return "All Square";
 
-    let player1Wins = 0;
-    let player2Wins = 0;
-
-    h2hMatch.scores.forEach(function(unusedScores, holeIndex) {
-        if (holeIndex > lastHoleIndex) {
-            return;
-        }
-
-        const scores = getH2HMatchPlayHoleScores(holeIndex);
-
-        if (scores.net.player1 === null || scores.net.player2 === null) {
-            return;
-        }
-
-        if (scores.net.player1 < scores.net.player2) player1Wins++;
-        if (scores.net.player2 < scores.net.player1) player2Wins++;
-    });
-
     const player1 = h2hMatch.players[0];
     const player2 = h2hMatch.players[1];
-    const difference = player1Wins - player2Wins;
+    const matchScore = getH2HMatchScore(lastHoleIndex);
 
-    if (difference === 0) {
+    if (matchScore === 0) {
         return "All Square";
     }
 
-    if (difference > 0) {
-        return `${player1.name} ${difference} Up`;
+    if (matchScore > 0) {
+        return `${player1.name} ${matchScore} Up`;
     }
 
-    return `${player2.name} ${Math.abs(difference)} Up`;
+    return `${player2.name} ${Math.abs(matchScore)} Up`;
+}
+
+function isH2HMatchComplete() {
+    return Boolean(
+        h2hMatch &&
+        h2hMatch.scores.length === h2hMatch.holeCount &&
+        h2hMatch.scores.every(function(scores) {
+            return scores.player1 !== null &&
+                scores.player1 !== undefined &&
+                scores.player2 !== null &&
+                scores.player2 !== undefined;
+        })
+    );
+}
+
+function getH2HStrokeReceiver(playingHandicaps) {
+    if (playingHandicaps.receivingPlayer === "player1") return "player";
+    if (playingHandicaps.receivingPlayer === "player2") return "opponent";
+
+    return "none";
+}
+
+function buildH2HScorecardRound(matchId, matchDate) {
+    const player = h2hMatch.players[0];
+    const scorecardHoles = h2hMatch.holes.map(function(hole, holeIndex) {
+        return {
+            hole: hole.holeNumber,
+            par: hole.par,
+            yards: hole.yards,
+            tee: hole.tee,
+            handicap: hole.hcp,
+            score: h2hMatch.scores[holeIndex].player1
+        };
+    });
+    const totalScore = scorecardHoles.reduce(function(sum, hole) {
+        return sum + hole.score;
+    }, 0);
+    const totalPar = scorecardHoles.reduce(function(sum, hole) {
+        return sum + hole.par;
+    }, 0);
+
+    return {
+        id: matchId,
+        type: "scorecard",
+        source: "h2h-match",
+        linkedH2HMatchId: matchId,
+        date: matchDate,
+        mode: "scorecard",
+        courseId: h2hMatch.courseId || selectedCourseId,
+        courseName: h2hMatch.courseName || courses[selectedCourseId].name,
+        holesPlayed: h2hMatch.holeCount,
+        hciUsed: player.hci,
+        holes: scorecardHoles,
+        totalScore,
+        totalPar,
+        toPar: totalScore - totalPar
+    };
+}
+
+function buildSavedH2HMatch(matchId, matchDate) {
+    const player = h2hMatch.players[0];
+    const opponent = h2hMatch.players[1];
+    const playingHandicaps = getH2HMatchPlayingHandicaps();
+    const matchScore = getH2HMatchScore();
+    const savedHoles = h2hMatch.holes.map(function(hole, holeIndex) {
+        const scores = getH2HMatchPlayHoleScores(holeIndex);
+
+        return {
+            holeNumber: hole.holeNumber,
+            par: hole.par,
+            yards: hole.yards,
+            handicap: hole.hcp,
+            playerGross: scores.gross.player1,
+            opponentGross: scores.gross.player2,
+            playerStrokes: scores.strokes.player1,
+            opponentStrokes: scores.strokes.player2,
+            playerNet: scores.net.player1,
+            opponentNet: scores.net.player2,
+            holeResult: getH2HMatchPlayHoleOutcome(holeIndex),
+            matchScoreAfterHole: getH2HMatchScore(holeIndex),
+            matchStatusAfterHole: getH2HMatchPlayStatus(holeIndex)
+        };
+    });
+
+    return {
+        id: matchId,
+        type: "h2h-match",
+        date: matchDate,
+        courseId: h2hMatch.courseId || selectedCourseId,
+        courseName: h2hMatch.courseName || courses[selectedCourseId].name,
+        holesPlayed: h2hMatch.holeCount,
+        playerName: player.name,
+        playerHci: player.hci,
+        playerPlayingHandicap: playingHandicaps.player1,
+        opponentName: opponent.name,
+        opponentHci: opponent.hci,
+        opponentPlayingHandicap: playingHandicaps.player2,
+        matchStrokeDifference: playingHandicaps.difference,
+        strokeReceiver: getH2HStrokeReceiver(playingHandicaps),
+        playerTotalGross: savedHoles.reduce(function(sum, hole) {
+            return sum + hole.playerGross;
+        }, 0),
+        opponentTotalGross: savedHoles.reduce(function(sum, hole) {
+            return sum + hole.opponentGross;
+        }, 0),
+        matchScore,
+        finalMatchStatus: getH2HMatchPlayStatus(h2hMatch.holeCount - 1),
+        result: getH2HMatchResult(),
+        holes: savedHoles
+    };
+}
+
+function saveH2HMatch() {
+    if (!h2hMatch || !isH2HMatchComplete()) {
+        alert("Enter both players' scores for every hole before saving the match.");
+        return;
+    }
+
+    const savedRounds = getSavedRounds();
+    const savedH2HMatches = getSavedH2HMatches();
+    let matchId = Date.now();
+
+    while (
+        savedRounds.some(round => round.id === matchId) ||
+        savedH2HMatches.some(match => match.id === matchId)
+    ) {
+        matchId++;
+    }
+
+    const matchDate = new Date().toLocaleDateString();
+    const scorecardRound = buildH2HScorecardRound(matchId, matchDate);
+    const savedH2HMatch = buildSavedH2HMatch(matchId, matchDate);
+
+    try {
+        saveSavedRounds(savedRounds.concat(scorecardRound));
+        saveSavedH2HMatches(savedH2HMatches.concat(savedH2HMatch));
+    } catch (error) {
+        console.error("Could not save H2H match:", error);
+
+        try {
+            saveSavedRounds(savedRounds);
+            saveSavedH2HMatches(savedH2HMatches);
+        } catch (rollbackError) {
+            console.error("Could not restore saved data after H2H save failure:", rollbackError);
+        }
+
+        alert("Match could not be saved. Your existing saved rounds were preserved.");
+        return;
+    }
+
+    localStorage.removeItem("gstH2HMatch");
+    h2hMatch = null;
+
+    alert(
+        "Match saved. Your round was added to Recent Rounds, and the H2H " +
+        `match was saved as Versus ${savedH2HMatch.opponentName}.`
+    );
+
+    showRecentRounds();
+}
+
+function deleteH2HMatch(matchId) {
+    const confirmed = confirm("Delete this H2H match? This cannot be undone.");
+
+    if (!confirmed) {
+        return;
+    }
+
+    const savedMatches = getSavedH2HMatches().filter(function(match) {
+        return match.id !== matchId;
+    });
+
+    saveSavedH2HMatches(savedMatches);
+    showRecentRounds();
 }
 
 function renderH2HMatchScorecard() {
@@ -1884,11 +2208,14 @@ function renderH2HMatchScorecard() {
 
     const player1 = h2hMatch.players[0];
     const player2 = h2hMatch.players[1];
+    const playingHandicaps = getH2HMatchPlayingHandicaps();
     const playersDisplay = document.getElementById("h2hMatchPlayers");
     const statusDisplay = document.getElementById("h2hMatchStatus");
     const grid = document.getElementById("h2hMatchGrid");
 
-    playersDisplay.textContent = `${player1.name} vs ${player2.name}`;
+    playersDisplay.textContent =
+        `${player1.name} PH ${playingHandicaps.player1} vs ` +
+        `${player2.name} PH ${playingHandicaps.player2}`;
     statusDisplay.textContent = getH2HMatchPlayStatus(h2hMatch.holeCount - 1);
     grid.innerHTML = "";
 
@@ -1945,6 +2272,12 @@ function renderH2HMatchScorecard() {
 
         grid.appendChild(holeDiv);
     });
+
+    const saveMatchButton = document.getElementById("saveH2HMatchButton");
+
+    if (saveMatchButton) {
+        saveMatchButton.classList.toggle("hidden", !isH2HMatchComplete());
+    }
 }
 
 function adjustH2HScore(playerKey, change, requestedHoleIndex) {
@@ -1960,7 +2293,7 @@ function adjustH2HScore(playerKey, change, requestedHoleIndex) {
 
     if (currentScore === null) {
         if (change < 0) {
-            saveH2HMatch();
+            persistH2HMatch();
             renderH2HMatchScorecard();
             return;
         }
@@ -1974,7 +2307,7 @@ function adjustH2HScore(playerKey, change, requestedHoleIndex) {
         h2hMatch.scores[holeIndex][playerKey] = null;
     }
 
-    saveH2HMatch();
+    persistH2HMatch();
     renderH2HMatchScorecard();
 }
 
@@ -1992,7 +2325,7 @@ function saveH2HHole() {
         h2hMatch.scores[holeIndex].player2 = hole.par;
     }
 
-    saveH2HMatch();
+    persistH2HMatch();
     renderH2HHole();
 }
 
@@ -2001,7 +2334,7 @@ function nextH2HHole() {
 
     if (h2hMatch.currentHole < h2hMatch.holeCount) {
         h2hMatch.currentHole++;
-        saveH2HMatch();
+        persistH2HMatch();
         renderH2HHole();
     }
 }
@@ -2011,12 +2344,12 @@ function previousH2HHole() {
 
     if (h2hMatch.currentHole > 1) {
         h2hMatch.currentHole--;
-        saveH2HMatch();
+        persistH2HMatch();
         renderH2HHole();
     }
 }
 
-function saveH2HMatch() {
+function persistH2HMatch() {
     localStorage.setItem("gstH2HMatch", JSON.stringify(h2hMatch));
 }
 
@@ -2213,7 +2546,22 @@ function showStats() {
 
     setElementHidden("statsScreen", false);
 
+    renderH2HRecordStats();
     renderHoleAverageStats();
+}
+
+function renderH2HRecordStats() {
+    const record = getSavedH2HMatches().reduce(function(totals, match) {
+        if (match.result === "win") totals.wins++;
+        if (match.result === "loss") totals.losses++;
+        if (match.result === "tie") totals.ties++;
+
+        return totals;
+    }, { wins: 0, losses: 0, ties: 0 });
+
+    document.getElementById("h2hStatsWins").textContent = record.wins;
+    document.getElementById("h2hStatsLosses").textContent = record.losses;
+    document.getElementById("h2hStatsTies").textContent = record.ties;
 }
 
 function renderHoleAverageStats() {

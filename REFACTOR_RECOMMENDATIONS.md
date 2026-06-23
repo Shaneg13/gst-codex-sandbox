@@ -161,15 +161,19 @@ For this behavior-preserving pass:
 
 ### Head-to-Head Match Play Follow-ups
 
-1. Expand net match-play fixtures for multiple HCI differences, multi-stroke holes, plus handicaps, and 9-hole/18-hole matches.
-2. Validate and version `gstH2HMatch` before adding automatic match resume across page refreshes.
-3. Keep H2H match history separate from `savedScorecardRounds` unless a backward-compatible shared history schema is designed.
+1. Expand Playing Handicap match-play fixtures beyond the current Whitinsville 9-hole 11-stroke case to cover multiple tee ratings/slopes, plus handicaps, and additional 18-hole matches.
+2. Version both `gstH2HMatch` and the new `gstH2HMatches` records before changing their schemas or adding automatic match resume.
+3. Preserve the current separation: G-Well's linked scorecard belongs in `savedScorecardRounds`, while opponent and match-result data belongs only in `gstH2HMatches`.
 4. Extract shared score-control rendering only after both Scorecard Mode and H2H visual behavior have real-browser regression coverage.
+5. Move tee rating, slope, par, and routing into a validated course/tee schema before adding more courses.
+6. Define whether deleting either linked record should offer an optional paired delete; current deletion intentionally treats them as independent histories.
 
 ## Important Logic and Data Contracts
 
 - LocalStorage key names are public compatibility contracts for existing browser data.
 - Saved-round objects and their nested `holes` arrays must remain structurally unchanged unless a future migration is introduced.
+- `gstH2HMatches` is a separate match-history contract and must not be included in regular scorecard-stat calculations.
+- H2H-generated scorecards use `source: "h2h-match"` and `linkedH2HMatchId` but retain the existing hole shape required by Recent Rounds, Round Detail, and Stats.
 - Course hole numbers, par, yardage, tee, and handicap values feed scorecard, details, statistics, and Head-to-Head calculations.
 - Global function names referenced by `onclick` attributes are part of the current UI contract.
 - `hidden` class behavior and explicit `display` values jointly control navigation and must not be casually unified.

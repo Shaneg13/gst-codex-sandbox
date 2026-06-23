@@ -3,6 +3,7 @@
 
 const SAVED_ROUNDS_KEY = "savedScorecardRounds";
 const ACTIVE_SCORECARD_KEY = "gstActiveScorecardRound";
+const SAVED_H2H_MATCHES_KEY = "gstH2HMatches";
 
 /**
  * Read JSON from LocalStorage without allowing malformed browser data to
@@ -25,7 +26,9 @@ function readStoredJson(key, fallbackValue) {
 }
 
 function getSavedRounds() {
-    return readStoredJson(SAVED_ROUNDS_KEY, []);
+    const savedRounds = readStoredJson(SAVED_ROUNDS_KEY, []);
+
+    return Array.isArray(savedRounds) ? savedRounds : [];
 }
 
 function saveSavedRounds(savedRounds) {
@@ -42,4 +45,17 @@ function saveActiveScorecardRound(activeRound) {
 
 function clearActiveScorecardRound() {
     localStorage.removeItem(ACTIVE_SCORECARD_KEY);
+}
+
+function getSavedH2HMatches() {
+    const savedMatches = readStoredJson(SAVED_H2H_MATCHES_KEY, []);
+
+    return Array.isArray(savedMatches) ? savedMatches : [];
+}
+
+function saveSavedH2HMatches(savedMatches) {
+    localStorage.setItem(
+        SAVED_H2H_MATCHES_KEY,
+        JSON.stringify(savedMatches)
+    );
 }

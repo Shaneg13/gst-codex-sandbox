@@ -77,6 +77,13 @@ All data is stored in browser LocalStorage. Existing key names and saved object 
 
 The app defensively falls back to existing defaults when a JSON value is malformed. It does not rename, migrate, or rewrite valid stored data during startup.
 
+H2H persistence uses two keys with separate responsibilities:
+
+- `gstH2HMatch` stores the currently entered Hole-by-Hole Match Play scorecard while it is active.
+- `gstH2HMatches` stores completed H2H match-history records. Missing, malformed, or non-array values safely fall back to an empty array.
+
+Completed H2H saves also append G-Well's compatible scorecard-only record to the existing `savedScorecardRounds` key. Existing records are retained; no key is renamed or replaced.
+
 ## Active Scorecard Persistence
 
 In-progress scorecard rounds are stored under the versioned LocalStorage key `gstActiveScorecardRound`. The active record contains:
@@ -103,11 +110,18 @@ Head-to-Head provides two independent flows:
 
 Opening Head-to-Head goes directly to New Match Setup. Compare Gross and Net Scores remains available from setup and the Head-to-Head mode picker.
 
-The match-play scorecard reuses the regular Scorecard Mode layout classes for hole number, par, yards, HCP, tee, and `+`/`−` gross-score controls. Each hole displays `Current Hole Result:`, both players' gross score, strokes received, net score, and the net match status. The summary at the top displays both player names and the current lead or `All Square`.
+The match-play scorecard reuses the regular Scorecard Mode layout classes for hole number, par, yards, HCP, tee, and `+`/`−` gross-score controls. Each hole displays `Current Hole Result:`, both players' gross score, strokes received, net score, and the net match status. The summary at the top displays both players' Playing Handicaps and the current lead or `All Square`.
 
-Hole-by-Hole Match uses **net scores** to decide each hole and the running match. The lower-HCI player plays scratch. The higher-HCI player receives the HCI difference, allocated by each hole's HCP/stroke index. Net score is `gross score - strokes received`. The separate Compare Gross and Net Scores flow remains unchanged.
+Hole-by-Hole Match uses **net scores** to decide each hole and the running match. It does not subtract raw Handicap Index values. For 9 holes, each 18-hole Handicap Index is divided by two and rounded to one decimal before the 9-hole Course Handicap formula is applied: `half index × (slope / 113) + (rating - par)`. The 100% individual match-play allowance is then rounded to a whole-number Playing Handicap. For 18 holes, the same formula uses the full Handicap Index and 18-hole tee data. The lower Playing Handicap plays scratch and the higher Playing Handicap receives their whole-number difference.
 
-The existing `gstH2HMatch` LocalStorage key is still updated for compatibility, but H2H matches are not added to Recent Rounds and no match-history feature has been added. No new H2H LocalStorage key was introduced.
+The difference is allocated across the active holes by HCP/stroke-index difficulty. Full cycles give one stroke on every active hole; any remainder goes to the hardest holes. For the documented Whitinsville White 9-hole fixture (`rating 35.2`, `slope 137`, `par 35`), HCI `25.6` becomes Playing Handicap `16`, HCI `7.4` becomes Playing Handicap `5`, and the 11-stroke difference gives one stroke on every hole plus a second stroke on holes 6 and 9. The Whitinsville White/Blue 18-hole routing uses rating `71.2`, slope `139`, and par `70`. Net score is `gross score - strokes received`. The separate Compare Gross and Net Scores flow remains unchanged.
+
+The Save Match button appears only after both gross scores are entered for every hole. Saving appends two linked records:
+
+1. A standard G-Well scorecard record in `savedScorecardRounds`, marked with `source: "h2h-match"` and `linkedH2HMatchId`. It contains only G-Well's gross hole scores and feeds the existing Recent Rounds detail and regular hole-average Stats.
+2. A separate `h2h-match` record in `gstH2HMatches` containing both players' HCIs, Playing Handicaps, relative strokes, gross and net hole results, numeric match score, final status, and win/loss/tie result.
+
+Recent Rounds displays the standard scorecard normally and adds a separate `H2H Match` card with opponent, final result, match status, and gross totals. H2H Wins, Losses, and Ties are calculated only from `gstH2HMatches`; H2H match records themselves never enter regular scorecard Stats. The two linked records can be deleted independently.
 
 ## Verification
 
@@ -121,7 +135,7 @@ The verifier checks every JavaScript file with `node --check`, validates script 
 
 Field-test verification also covers active-round autosave, refresh and Continue restoration, current-hole restoration, incomplete-save blocking, abandon isolation, corrupted active data, and migration from legacy scorecard progress.
 
-Head-to-Head verification covers setup defaults, opponent inputs, 9-hole match creation, reused Scorecard Mode layout, both players' controls, relative stroke allocation, gross-to-net calculation, halved holes, net match summary updates, and the existing gross/net comparison.
+Head-to-Head verification covers setup defaults, opponent inputs, 9-hole Playing Handicap calculations, the Whitinsville 11-stroke allocation fixture, reused Scorecard Mode layout, both players' controls, gross-to-net calculation, numeric match scoring, incomplete-save protection, dual-record persistence, Recent Rounds cards, H2H record Stats, regular Stats isolation, 18-hole allocation, and the existing gross/net comparison.
 
 No npm install or build step is required. A failed check exits with a nonzero status and prints the failing condition.
 

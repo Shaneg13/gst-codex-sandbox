@@ -432,6 +432,29 @@ button:active {
     color: #7CFF8A;
 }
 
+.h2h-recent-match-card {
+    align-items: flex-start;
+    gap: 16px;
+    border-color: rgba(124, 255, 138, 0.24);
+}
+
+.h2h-recent-match-card .h2h-recent-match-main {
+    min-width: 112px;
+}
+
+.h2h-recent-match-card .h2h-recent-match-main > strong {
+    color: #7CFF8A;
+}
+
+.h2h-recent-match-card .h2h-recent-match-result {
+    align-items: flex-end;
+    text-align: right;
+}
+
+.h2h-recent-match-card .h2h-recent-match-result strong {
+    font-size: 13px;
+}
+
 .empty-message {
     opacity: 0.72;
     text-align: center;
@@ -833,6 +856,42 @@ button:active {
     margin-top: 14px;
 }
 
+.h2h-record-card {
+    background: rgba(124, 255, 138, 0.06);
+    border: 1px solid rgba(124, 255, 138, 0.22);
+    border-radius: 16px;
+    padding: 14px;
+    margin: 14px 0;
+}
+
+.h2h-record-card h3 {
+    margin: 0 0 12px;
+    font-size: 16px;
+}
+
+.h2h-record-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+}
+
+.h2h-record-stats div {
+    text-align: center;
+}
+
+.h2h-record-stats span {
+    display: block;
+    font-size: 12px;
+    opacity: 0.72;
+}
+
+.h2h-record-stats strong {
+    display: block;
+    margin-top: 4px;
+    color: #7CFF8A;
+    font-size: 22px;
+}
+
 .hole-average-card {
     display: grid;
     grid-template-columns: 44px 1fr auto;
@@ -1028,6 +1087,15 @@ button:active {
 }
 
 @media (max-width: 600px) {
+    .h2h-recent-match-card {
+        flex-direction: column;
+    }
+
+    .h2h-recent-match-card .h2h-recent-match-result {
+        align-items: flex-start;
+        text-align: left;
+    }
+
     .button-row {
         display: grid;
         grid-template-columns: 1fr 1fr;
