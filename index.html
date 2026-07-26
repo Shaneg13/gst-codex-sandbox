@@ -10,7 +10,7 @@
     <!-- Optional browser tab icon -->
     <link rel="icon" type="image/png" href="golfshottrackericon.png?v=2">
 
-    <link rel="stylesheet" href="style.css?v=16">
+    <link rel="stylesheet" href="style.css?v=17">
 </head>
 
 <body>
@@ -24,6 +24,12 @@
     <h1>
         <img src="gstbanner.png" alt="GST" class="app-header-logo">
     </h1>
+    <div
+        id="saveStatus"
+        class="save-status save-status-hidden hidden"
+        role="status"
+        aria-live="polite"
+    ></div>
 </div>
 
 <div class="card" id="homeCard">
@@ -35,9 +41,10 @@
     <p>Begin a new golf round</p>
 </div>
 
-<div class="home-tile" onclick="continueRound()">
-            <h3>Continue</h3>
-            <p>Resume active round</p>
+<div class="home-tile" id="continueRoundTile" onclick="continueRound()">
+            <h3>Continue Round</h3>
+            <p id="continueRoundSummary">No active round</p>
+            <span id="continueRoundLastSaved" class="continue-last-saved"></span>
         </div>
 
 <div class="home-tile" onclick="showStats()">
@@ -67,6 +74,7 @@
 </div>
 </div>
 
+<p id="activeSessionNotice" class="active-session-notice hidden"></p>
 <p class="beta-testing-label">Beta Testing</p>
 
 </div>
@@ -147,6 +155,10 @@
 <button onclick="showStats()">Show Stats</button>
 <button onclick="exportShots()">Export Data</button>
 <button onclick="clearShots()">Clear Shots</button>
+<button onclick="completeShotTrackingRound()">Complete Round</button>
+<button onclick="abandonCurrentShotTrackingRound()" class="secondary-button">
+    Abandon Current Round
+</button>
 
 </div>
 
@@ -481,6 +493,10 @@
         Save Match
     </button>
 
+    <button onclick="abandonCurrentH2HMatch()" class="secondary-button">
+        Abandon Current Match
+    </button>
+
     <button onclick="showH2HModePicker()" class="secondary-button">
         Back to Head-to-Head
     </button>
@@ -526,11 +542,11 @@
 </div>
 
 <!-- Classic scripts share the global scope; dependency order is required. -->
-<script src="js/storage.js?v=3"></script>
-<script src="js/state.js?v=2"></script>
+<script src="js/storage.js?v=4"></script>
+<script src="js/state.js?v=3"></script>
 <script src="js/navigation.js?v=1"></script>
 <script src="js/utils.js?v=1"></script>
-<script src="app.js?v=20"></script>
+<script src="app.js?v=21"></script>
 
 <div id="roundModePopup" class="modal hidden">
     <div class="modal-content round-mode-modal">
@@ -572,6 +588,30 @@
         </button>
 
         <button class="secondary-button" onclick="closeHoleCountPopup()">
+            Cancel
+        </button>
+
+    </div>
+</div>
+
+<div id="activeSessionConflictPopup" class="modal hidden">
+    <div class="modal-content round-mode-modal">
+
+        <h2>Active Round Found</h2>
+        <p id="activeSessionConflictMessage" class="modal-subtitle">
+            An unfinished golf round is already active.
+        </p>
+
+        <button class="mode-option" onclick="continueExistingSessionFromConflict()">
+            <strong>Continue Existing Round</strong>
+            <span>Return to the last verified save</span>
+        </button>
+
+        <button class="secondary-button danger-button" onclick="abandonExistingSessionFromConflict()">
+            Abandon Existing Round
+        </button>
+
+        <button class="secondary-button" onclick="cancelActiveSessionConflict()">
             Cancel
         </button>
 

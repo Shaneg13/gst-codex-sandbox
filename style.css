@@ -109,6 +109,24 @@ h3 {
     text-transform: uppercase;
 }
 
+.continue-last-saved {
+    display: block;
+    margin-top: 6px;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.active-session-notice {
+    margin: 8px;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 209, 102, 0.4);
+    border-radius: 10px;
+    background: rgba(255, 209, 102, 0.08);
+    color: var(--warning);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
 label {
     display: block;
     margin-top: 14px;
@@ -211,6 +229,39 @@ button:active {
     object-fit: contain;
 }
 
+.save-status {
+    width: fit-content;
+    margin: 8px auto 0;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.03em;
+}
+
+.save-status-saving {
+    color: var(--warning);
+    background: rgba(255, 209, 102, 0.12);
+}
+
+.save-status-saved {
+    color: var(--accent-green);
+    background: rgba(124, 255, 138, 0.10);
+}
+
+.save-status-failed {
+    color: #FFFFFF;
+    background: rgba(255, 107, 107, 0.30);
+    border: 1px solid var(--danger);
+    box-shadow: 0 0 10px rgba(255, 107, 107, 0.25);
+}
+
+.save-status-restored {
+    color: var(--warning);
+    background: rgba(255, 209, 102, 0.12);
+    border: 1px solid rgba(255, 209, 102, 0.4);
+}
+
 .hidden {
     display: none !important;
 }
@@ -287,6 +338,12 @@ button:active {
     color: white;
 }
 
+.danger-button {
+    color: #FFFFFF;
+    border: 1px solid rgba(255, 107, 107, 0.55);
+    background: rgba(255, 107, 107, 0.15);
+}
+
 .scorecard-grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -304,6 +361,11 @@ button:active {
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 16px;
     padding: 10px;
+}
+
+.scorecard-hole.active-hole {
+    border-color: var(--accent-green-muted);
+    box-shadow: 0 0 0 1px var(--accent-green-glow);
 }
 
 .hole-number {

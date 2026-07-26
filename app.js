@@ -50,11 +50,13 @@ blueTees: [
 // Shot-tracking round and hole flow
 // ============================================================
 
-function updateHoleDisplay() {
+function updateHoleDisplay(shouldPersist) {
     document.getElementById("currentHole").textContent = currentHole;
     document.getElementById("summaryHole").textContent = currentHole;
 
-    localStorage.setItem("currentHole", currentHole);
+    if (shouldPersist !== false && currentRound) {
+        persistShotTrackingActiveSession(true);
+    }
 }
 
 function saveHole() {
@@ -85,11 +87,7 @@ function saveHole() {
     };
 
     holes.push(holeRecord);
-
-localStorage.setItem(
-    "holes",
-    JSON.stringify(holes)
-);
+    persistShotTrackingActiveSession(true);
 
 renderScorecard();
 
@@ -184,6 +182,13 @@ function renderScorecard() {
 }
 
 function saveRound() {
+    return guardNewActiveSession(
+        "Shot Tracking",
+        beginShotTrackingRound
+    );
+}
+
+function beginShotTrackingRound() {
 
     const course =
         document.getElementById("courseInput").value;
@@ -200,23 +205,21 @@ function saveRound() {
     currentRound = {
         id: Date.now(),
         course: course,
-        date: date
+        date: date,
+        courseId: selectedCourseId,
+        tee: null,
+        holeCount: 18
     };
 
-localStorage.setItem(
-    "currentRound",
-    JSON.stringify(currentRound)
-);
+    currentHole = 1;
 
-currentHole = 1;
-localStorage.setItem("currentHole", currentHole);
+    document.getElementById("roundTitle").textContent =
+        course + " - " + date;
 
-document.getElementById("roundTitle").textContent =
-    course + " - " + date;
-
-updateHoleDisplay();
-updateSummary();
-continueRound();
+    persistShotTrackingActiveSession(true);
+    updateHoleDisplay(false);
+    updateSummary();
+    showShotTrackingRoundScreen();
 }
 
 function deleteRound(roundId) {
@@ -293,11 +296,7 @@ const shot = {
     console.log(shot);
 
     shots.push(shot);
-
-    localStorage.setItem(
-        "shots",
-        JSON.stringify(shots)
-    );
+    persistShotTrackingActiveSession(true);
 
     document.getElementById("clubInput").value = "";
     document.getElementById("distanceInput").value = "";
@@ -423,6 +422,1163 @@ function goHome() {
     hideAllScreens();
 
     setElementDisplay("homeCard", "block");
+    updateContinueRoundDisplay();
+}
+
+// ============================================================
+// Verified active-session persistence and recovery
+// ============================================================
+
+function getActiveSessionModeLabel(mode) {
+    const labels = {
+        scorecard: "Regular Scorecard",
+        h2h: "Head-to-Head",
+        shotTracking: "Shot Tracking"
+    };
+
+    return labels[mode] || "Golf Round";
+}
+
+function getActiveSessionTeeLabel(mode, holeCount) {
+    if (mode === "shotTracking") {
+        return null;
+    }
+
+    return Number(holeCount) === 9
+        ? "White"
+        : "Front 9 White / Back 9 Blue";
+}
+
+function setSaveStatus(status, message) {
+    const statusElement = document.getElementById("saveStatus");
+
+    if (!statusElement) {
+        return;
+    }
+
+    const messages = {
+        hidden: "",
+        saving: "Saving…",
+        saved: "Saved",
+        failed: "Save Failed — latest change is not safely stored",
+        restored: "Restored from Backup"
+    };
+
+    statusElement.className = `save-status save-status-${status}`;
+    statusElement.textContent = message || messages[status] || status;
+    statusElement.classList.toggle("hidden", status === "hidden");
+}
+
+function updateContinueRoundDisplay() {
+    const summary = document.getElementById("continueRoundSummary");
+    const lastSaved = document.getElementById("continueRoundLastSaved");
+    const notice = document.getElementById("activeSessionNotice");
+
+    if (!summary || !lastSaved || !notice) {
+        return;
+    }
+
+    if (!activeSession) {
+        summary.textContent = "No active round";
+        lastSaved.textContent = "";
+        notice.textContent = activeSessionRecoveryNotice;
+        notice.classList.toggle(
+            "hidden",
+            activeSessionRecoveryNotice.length === 0
+        );
+        setSaveStatus("hidden");
+        return;
+    }
+
+    summary.textContent =
+        `${getActiveSessionModeLabel(activeSession.mode)} • ` +
+        `${activeSession.course.name} • ${activeSession.holeCount} holes • ` +
+        `Hole ${activeSession.currentHole}`;
+    lastSaved.textContent =
+        `Last saved ${new Date(activeSession.updatedAt).toLocaleTimeString()}`;
+    notice.textContent = activeSessionRecoveryNotice;
+    notice.classList.toggle(
+        "hidden",
+        activeSessionRecoveryNotice.length === 0
+    );
+}
+
+function createActiveSessionBase(
+    mode,
+    holeCount,
+    currentActiveHole,
+    course,
+    player,
+    shouldTouch
+) {
+    const existing = activeSession && activeSession.mode === mode
+        ? activeSession
+        : null;
+    const now = new Date().toISOString();
+
+    return {
+        schemaVersion: 2,
+        id: existing?.id || generateActiveSessionId(),
+        mode,
+        status: "active",
+        createdAt: existing?.createdAt || now,
+        updatedAt: shouldTouch === false && existing?.updatedAt
+            ? existing.updatedAt
+            : now,
+        course: {
+            id: course.id || "whitinsville",
+            name: course.name || "Whitinsville Golf Club",
+            tee: course.tee === undefined ? null : course.tee
+        },
+        holeCount,
+        currentHole: Math.min(
+            Math.max(Number(currentActiveHole) || 1, 1),
+            holeCount
+        ),
+        player: {
+            name: player.name || "G-Well",
+            hci: Number.isFinite(player.hci) ? player.hci : null
+        },
+        state: {}
+    };
+}
+
+function buildScorecardActiveSession(shouldTouch) {
+    if (!activeScorecardRound || simpleScorecard.length === 0) {
+        return null;
+    }
+
+    const courseId = activeScorecardRound.courseId || selectedCourseId;
+    const course = courses[courseId] || courses.whitinsville;
+    const holeCount = simpleScorecard.length;
+    const session = createActiveSessionBase(
+        "scorecard",
+        holeCount,
+        activeScorecardRound.currentHole,
+        {
+            id: course.id,
+            name: course.name,
+            tee: getActiveSessionTeeLabel("scorecard", holeCount)
+        },
+        {
+            name: playerProfile.name,
+            hci: activeScorecardRound.hciUsed
+        },
+        shouldTouch
+    );
+
+    session.state = {
+        screen: "scorecardScreen",
+        hciUsed: activeScorecardRound.hciUsed,
+        holes: cloneJsonValue(simpleScorecard)
+    };
+
+    return session;
+}
+
+function buildH2HActiveSession(shouldTouch) {
+    if (!h2hMatch) {
+        return null;
+    }
+
+    const courseId = h2hMatch.courseId || selectedCourseId;
+    const course = courses[courseId] || courses.whitinsville;
+    const player = h2hMatch.players[0];
+    const session = createActiveSessionBase(
+        "h2h",
+        h2hMatch.holeCount,
+        h2hMatch.currentHole,
+        {
+            id: course.id,
+            name: h2hMatch.courseName || course.name,
+            tee: getActiveSessionTeeLabel("h2h", h2hMatch.holeCount)
+        },
+        player,
+        shouldTouch
+    );
+
+    session.state = {
+        screen: "h2hMatchScreen",
+        match: cloneJsonValue(h2hMatch),
+        matchScore: getH2HMatchScore(),
+        matchStatus: getH2HMatchPlayStatus(
+            h2hMatch.holeCount - 1
+        )
+    };
+
+    return session;
+}
+
+function buildShotTrackingActiveSession(shouldTouch) {
+    if (!currentRound) {
+        return null;
+    }
+
+    const course = courses[selectedCourseId] || courses.whitinsville;
+    const roundShots = shots.filter(function(shot) {
+        return shot.roundId === currentRound.id;
+    });
+    const roundHoles = holes.filter(function(hole) {
+        return hole.roundId === currentRound.id;
+    });
+    const session = createActiveSessionBase(
+        "shotTracking",
+        Number(currentRound.holeCount) === 9 ? 9 : 18,
+        currentHole,
+        {
+            id: currentRound.courseId || course.id,
+            name: currentRound.course || course.name,
+            tee: currentRound.tee || null
+        },
+        playerProfile,
+        shouldTouch
+    );
+
+    session.state = {
+        screen: "shotTrackerCard",
+        round: cloneJsonValue(currentRound),
+        shots: cloneJsonValue(roundShots),
+        holes: cloneJsonValue(roundHoles)
+    };
+
+    return session;
+}
+
+function persistActiveSessionCandidate(candidate, restoredFromBackup) {
+    if (!candidate) {
+        return false;
+    }
+
+    activeSession = candidate;
+    setSaveStatus("saving");
+
+    const result = saveVerifiedActiveSession(candidate);
+
+    if (!result.ok) {
+        setSaveStatus("failed");
+        updateContinueRoundDisplay();
+
+        if (!saveFailureAlertShown) {
+            alert(
+                "Save Failed. GST kept the round open, but the latest " +
+                "change is not safely stored. Keep GST open and retry."
+            );
+            saveFailureAlertShown = true;
+        }
+
+        return false;
+    }
+
+    activeSession = result.value;
+    saveFailureAlertShown = false;
+    setSaveStatus(restoredFromBackup ? "restored" : "saved");
+    updateContinueRoundDisplay();
+    return true;
+}
+
+function writeLegacyJson(key, value, validator) {
+    if (!preserveInvalidJsonBeforeWrite(key, validator)) {
+        console.warn(
+            `Legacy key "${key}" was not overwritten because its invalid raw value could not be archived.`
+        );
+        return false;
+    }
+
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+
+        const verification = readStoredJsonResult(key);
+
+        return verification.valid && validator(verification.value);
+    } catch (error) {
+        console.warn(`Could not mirror active data to "${key}":`, error);
+        return false;
+    }
+}
+
+function mirrorScorecardLegacyState() {
+    if (!activeSession || activeSession.mode !== "scorecard") {
+        return;
+    }
+
+    activeScorecardRound.version = 1;
+    activeScorecardRound.sessionId = activeSession.id;
+    activeScorecardRound.createdAt = activeSession.createdAt;
+    activeScorecardRound.updatedAt = activeSession.updatedAt;
+
+    writeLegacyJson(
+        ACTIVE_SCORECARD_KEY,
+        activeScorecardRound,
+        isValidActiveScorecardRound
+    );
+    writeLegacyJson(
+        "simpleScorecard",
+        simpleScorecard,
+        Array.isArray
+    );
+
+    try {
+        localStorage.setItem(
+            "scorecardHoleCount",
+            activeScorecardRound.holeCount
+        );
+        localStorage.setItem("roundMode", "scorecard");
+    } catch (error) {
+        console.warn("Could not mirror legacy scorecard metadata:", error);
+    }
+}
+
+function mirrorH2HLegacyState() {
+    if (!activeSession || activeSession.mode !== "h2h" || !h2hMatch) {
+        return;
+    }
+
+    h2hMatch.schemaVersion = 1;
+    h2hMatch.sessionId = activeSession.id;
+    h2hMatch.createdAt = activeSession.createdAt;
+    h2hMatch.updatedAt = activeSession.updatedAt;
+
+    writeLegacyJson(
+        "gstH2HMatch",
+        h2hMatch,
+        function(value) {
+            return isValidActiveH2HMatch(
+                value,
+                Number(value?.holeCount)
+            );
+        }
+    );
+}
+
+function mirrorShotTrackingLegacyState() {
+    if (
+        !activeSession ||
+        activeSession.mode !== "shotTracking" ||
+        !currentRound
+    ) {
+        return;
+    }
+
+    currentRound.schemaVersion = 1;
+    currentRound.sessionId = activeSession.id;
+    currentRound.createdAt = activeSession.createdAt;
+    currentRound.updatedAt = activeSession.updatedAt;
+    currentRound.holeCount = activeSession.holeCount;
+    currentRound.courseId = activeSession.course.id;
+    currentRound.tee = activeSession.course.tee;
+
+    writeLegacyJson(
+        "currentRound",
+        currentRound,
+        isPlainObject
+    );
+    writeLegacyJson("shots", shots, Array.isArray);
+    writeLegacyJson("holes", holes, Array.isArray);
+
+    try {
+        localStorage.setItem("currentHole", currentHole);
+        localStorage.setItem("roundMode", "shotTracking");
+    } catch (error) {
+        console.warn("Could not mirror legacy Shot Tracking metadata:", error);
+    }
+}
+
+function persistScorecardActiveSession(shouldTouch) {
+    const saved = persistActiveSessionCandidate(
+        buildScorecardActiveSession(shouldTouch),
+        false
+    );
+
+    if (saved) {
+        mirrorScorecardLegacyState();
+    }
+
+    return saved;
+}
+
+function persistH2HActiveSession(shouldTouch) {
+    const saved = persistActiveSessionCandidate(
+        buildH2HActiveSession(shouldTouch),
+        false
+    );
+
+    if (saved) {
+        mirrorH2HLegacyState();
+    }
+
+    return saved;
+}
+
+function persistShotTrackingActiveSession(shouldTouch) {
+    const saved = persistActiveSessionCandidate(
+        buildShotTrackingActiveSession(shouldTouch),
+        false
+    );
+
+    if (saved) {
+        mirrorShotTrackingLegacyState();
+    }
+
+    return saved;
+}
+
+function getLegacySessionTimestamp(value) {
+    if (isValidIsoTimestamp(value?.updatedAt)) {
+        return value.updatedAt;
+    }
+
+    if (
+        Number.isFinite(value?.id) &&
+        value.id > 1000000000000 &&
+        value.id < 9999999999999
+    ) {
+        return new Date(value.id).toISOString();
+    }
+
+    return new Date(0).toISOString();
+}
+
+function migrateLegacyScorecardSession(legacyRound) {
+    const courseId = courses[legacyRound.courseId]
+        ? legacyRound.courseId
+        : "whitinsville";
+    const course = courses[courseId];
+    const timestamp = getLegacySessionTimestamp(legacyRound);
+
+    return {
+        schemaVersion: 2,
+        id: typeof legacyRound.sessionId === "string"
+            ? legacyRound.sessionId
+            : generateActiveSessionId(),
+        mode: "scorecard",
+        status: "active",
+        createdAt: isValidIsoTimestamp(legacyRound.createdAt)
+            ? legacyRound.createdAt
+            : timestamp,
+        updatedAt: timestamp,
+        course: {
+            id: courseId,
+            name: course.name,
+            tee: getActiveSessionTeeLabel(
+                "scorecard",
+                legacyRound.holeCount
+            )
+        },
+        holeCount: legacyRound.holeCount,
+        currentHole: legacyRound.currentHole,
+        player: {
+            name: playerProfile.name || "G-Well",
+            hci: legacyRound.hciUsed
+        },
+        state: {
+            screen: "scorecardScreen",
+            hciUsed: legacyRound.hciUsed,
+            holes: cloneJsonValue(legacyRound.holes)
+        }
+    };
+}
+
+function migrateLegacyH2HSession(legacyMatch) {
+    const courseId = courses[legacyMatch.courseId]
+        ? legacyMatch.courseId
+        : "whitinsville";
+    const course = courses[courseId];
+    const timestamp = getLegacySessionTimestamp(legacyMatch);
+
+    return {
+        schemaVersion: 2,
+        id: typeof legacyMatch.sessionId === "string"
+            ? legacyMatch.sessionId
+            : generateActiveSessionId(),
+        mode: "h2h",
+        status: "active",
+        createdAt: isValidIsoTimestamp(legacyMatch.createdAt)
+            ? legacyMatch.createdAt
+            : timestamp,
+        updatedAt: timestamp,
+        course: {
+            id: courseId,
+            name: legacyMatch.courseName || course.name,
+            tee: getActiveSessionTeeLabel(
+                "h2h",
+                legacyMatch.holeCount
+            )
+        },
+        holeCount: legacyMatch.holeCount,
+        currentHole: legacyMatch.currentHole,
+        player: {
+            name: legacyMatch.players[0].name,
+            hci: legacyMatch.players[0].hci
+        },
+        state: {
+            screen: "h2hMatchScreen",
+            match: cloneJsonValue(legacyMatch),
+            matchScore: 0,
+            matchStatus: "All Square"
+        }
+    };
+}
+
+function migrateLegacyShotTrackingSession(
+    legacyRound,
+    legacyShots,
+    legacyHoles
+) {
+    const course = courses[legacyRound.courseId] ||
+        courses[selectedCourseId] ||
+        courses.whitinsville;
+    const roundShots = legacyShots.filter(function(shot) {
+        return shot.roundId === legacyRound.id;
+    });
+    const roundHoles = legacyHoles.filter(function(hole) {
+        return hole.roundId === legacyRound.id;
+    });
+    const timestamp = getLegacySessionTimestamp(legacyRound);
+
+    return {
+        schemaVersion: 2,
+        id: typeof legacyRound.sessionId === "string"
+            ? legacyRound.sessionId
+            : generateActiveSessionId(),
+        mode: "shotTracking",
+        status: "active",
+        createdAt: isValidIsoTimestamp(legacyRound.createdAt)
+            ? legacyRound.createdAt
+            : timestamp,
+        updatedAt: timestamp,
+        course: {
+            id: legacyRound.courseId || course.id,
+            name: legacyRound.course || course.name,
+            tee: legacyRound.tee || null
+        },
+        holeCount: Number(legacyRound.holeCount) === 9 ? 9 : 18,
+        currentHole: Math.min(
+            Math.max(Number(localStorage.getItem("currentHole")) || 1, 1),
+            Number(legacyRound.holeCount) === 9 ? 9 : 18
+        ),
+        player: {
+            name: playerProfile.name || "G-Well",
+            hci: Number.isFinite(playerProfile.hci)
+                ? playerProfile.hci
+                : null
+        },
+        state: {
+            screen: "shotTrackerCard",
+            round: cloneJsonValue(legacyRound),
+            shots: cloneJsonValue(roundShots),
+            holes: cloneJsonValue(roundHoles)
+        }
+    };
+}
+
+function addDistinctActiveSessionCandidate(
+    candidates,
+    session,
+    sourceKey
+) {
+    if (!isValidActiveSessionSnapshot(session)) {
+        return;
+    }
+
+    const existingIndex = candidates.findIndex(function(candidate) {
+        return candidate.session.id === session.id;
+    });
+    const wrappedCandidate = { session, sourceKey };
+
+    if (existingIndex === -1) {
+        candidates.push(wrappedCandidate);
+        return;
+    }
+
+    if (
+        Date.parse(session.updatedAt) >
+        Date.parse(candidates[existingIndex].session.updatedAt)
+    ) {
+        candidates[existingIndex] = wrappedCandidate;
+    }
+}
+
+function collectRecoverableActiveSessions() {
+    const candidates = [];
+    const activeResult = readStoredJsonResult(ACTIVE_SESSION_KEY);
+    const previousResult =
+        readStoredJsonResult(ACTIVE_SESSION_PREVIOUS_KEY);
+    const activeCanonicalIsValid = activeResult.exists &&
+        activeResult.valid &&
+        isValidActiveSessionSnapshot(activeResult.value);
+    const previousCanonicalIsValid = previousResult.exists &&
+        previousResult.valid &&
+        isValidActiveSessionSnapshot(previousResult.value);
+
+    if (activeCanonicalIsValid) {
+        addDistinctActiveSessionCandidate(
+            candidates,
+            activeResult.value,
+            ACTIVE_SESSION_KEY
+        );
+    }
+
+    if (previousCanonicalIsValid) {
+        addDistinctActiveSessionCandidate(
+            candidates,
+            previousResult.value,
+            ACTIVE_SESSION_PREVIOUS_KEY
+        );
+    }
+
+    const canonicalModes = new Set(
+        candidates.map(function(candidate) {
+            return candidate.session.mode;
+        })
+    );
+
+    if (!canonicalModes.has("scorecard")) {
+        const scorecardResult =
+            readStoredJsonResult(ACTIVE_SCORECARD_KEY);
+
+        if (
+            scorecardResult.exists &&
+            scorecardResult.valid &&
+            isValidActiveScorecardRound(scorecardResult.value)
+        ) {
+            addDistinctActiveSessionCandidate(
+                candidates,
+                migrateLegacyScorecardSession(scorecardResult.value),
+                ACTIVE_SCORECARD_KEY
+            );
+        } else {
+            const legacyScorecardResult =
+                readStoredJsonResult("simpleScorecard");
+            const legacyHoleCount =
+                Number(localStorage.getItem("scorecardHoleCount")) ||
+                (
+                    Array.isArray(legacyScorecardResult.value)
+                        ? legacyScorecardResult.value.length
+                        : 0
+                );
+            const legacyRound = {
+                version: 1,
+                courseId: courses[selectedCourseId]
+                    ? selectedCourseId
+                    : "whitinsville",
+                holeCount: legacyHoleCount,
+                currentHole: Math.min(
+                    Math.max(currentHole, 1),
+                    legacyHoleCount
+                ),
+                hciUsed: playerProfile.hci,
+                holes: legacyScorecardResult.value
+            };
+
+            if (
+                legacyScorecardResult.exists &&
+                legacyScorecardResult.valid &&
+                isValidActiveScorecardRound(legacyRound)
+            ) {
+                addDistinctActiveSessionCandidate(
+                    candidates,
+                    migrateLegacyScorecardSession(legacyRound),
+                    "simpleScorecard"
+                );
+            }
+        }
+    }
+
+    if (!canonicalModes.has("h2h")) {
+        const h2hResult = readStoredJsonResult("gstH2HMatch");
+
+        if (
+            h2hResult.exists &&
+            h2hResult.valid &&
+            isValidActiveH2HMatch(
+                h2hResult.value,
+                Number(h2hResult.value?.holeCount)
+            )
+        ) {
+            addDistinctActiveSessionCandidate(
+                candidates,
+                migrateLegacyH2HSession(h2hResult.value),
+                "gstH2HMatch"
+            );
+        }
+    }
+
+    if (!canonicalModes.has("shotTracking")) {
+        const roundResult = readStoredJsonResult("currentRound");
+        const shotsResult = readStoredJsonResult("shots");
+        const holesResult = readStoredJsonResult("holes");
+
+        if (
+            roundResult.exists &&
+            roundResult.valid &&
+            isPlainObject(roundResult.value) &&
+            shotsResult.valid &&
+            Array.isArray(shotsResult.value || []) &&
+            holesResult.valid &&
+            Array.isArray(holesResult.value || [])
+        ) {
+            addDistinctActiveSessionCandidate(
+                candidates,
+                migrateLegacyShotTrackingSession(
+                    roundResult.value,
+                    shotsResult.value || [],
+                    holesResult.value || []
+                ),
+                "currentRound"
+            );
+        }
+    }
+
+    candidates.sort(function(a, b) {
+        return Date.parse(b.session.updatedAt) -
+            Date.parse(a.session.updatedAt);
+    });
+
+    return {
+        candidates,
+        activeCanonicalIsInvalid:
+            activeResult.exists && !activeCanonicalIsValid,
+        previousCanonicalIsValid
+    };
+}
+
+function applyActiveSessionToRuntime(session, showScreen) {
+    if (!session) {
+        return false;
+    }
+
+    selectedCourseId = courses[session.course.id]
+        ? session.course.id
+        : "whitinsville";
+
+    if (session.mode === "scorecard") {
+        activeScorecardRound = {
+            version: 1,
+            sessionId: session.id,
+            createdAt: session.createdAt,
+            updatedAt: session.updatedAt,
+            courseId: selectedCourseId,
+            holeCount: session.holeCount,
+            currentHole: session.currentHole,
+            hciUsed: session.state.hciUsed,
+            holes: cloneJsonValue(session.state.holes)
+        };
+        simpleScorecard = activeScorecardRound.holes;
+
+        if (showScreen) {
+            showScorecardScreen();
+            renderSimpleScorecard();
+        }
+
+        return true;
+    }
+
+    if (session.mode === "h2h") {
+        h2hMatch = cloneJsonValue(session.state.match);
+        h2hMatch.currentHole = session.currentHole;
+
+        if (showScreen) {
+            showH2HMatchScreen();
+        }
+
+        return true;
+    }
+
+    currentRound = cloneJsonValue(session.state.round);
+    currentHole = session.currentHole;
+    shots = shots.filter(function(shot) {
+        return shot.roundId !== currentRound.id;
+    }).concat(cloneJsonValue(session.state.shots));
+    holes = holes.filter(function(hole) {
+        return hole.roundId !== currentRound.id;
+    }).concat(cloneJsonValue(session.state.holes));
+
+    if (showScreen) {
+        showShotTrackingRoundScreen();
+    }
+
+    return true;
+}
+
+function recoverActiveSessionState() {
+    const recovery = collectRecoverableActiveSessions();
+
+    activeSessionCandidates = recovery.candidates.map(function(candidate) {
+        return candidate.session;
+    });
+    activeSessionRecoveryNotice = "";
+
+    if (activeSessionCandidates.length === 0) {
+        activeSession = null;
+
+        if (recovery.activeCanonicalIsInvalid) {
+            activeSessionRecoveryNotice =
+                "Invalid active data was preserved for recovery; GST did not delete it.";
+        }
+
+        updateContinueRoundDisplay();
+        return false;
+    }
+
+    const selectedCandidate = recovery.candidates[0];
+    activeSession = cloneJsonValue(selectedCandidate.session);
+
+    if (activeSessionCandidates.length > 1) {
+        activeSessionRecoveryNotice =
+            `${activeSessionCandidates.length} recoverable active sessions were found. ` +
+            "GST selected the newest valid save and preserved the others.";
+    }
+
+    const restoredFromBackup =
+        recovery.activeCanonicalIsInvalid &&
+        selectedCandidate.sourceKey === ACTIVE_SESSION_PREVIOUS_KEY;
+    const migratedLegacy =
+        selectedCandidate.sourceKey !== ACTIVE_SESSION_KEY &&
+        selectedCandidate.sourceKey !== ACTIVE_SESSION_PREVIOUS_KEY;
+
+    if (migratedLegacy) {
+        const now = new Date().toISOString();
+        activeSession.createdAt =
+            activeSession.createdAt === new Date(0).toISOString()
+                ? now
+                : activeSession.createdAt;
+        activeSession.updatedAt = now;
+    }
+
+    if (restoredFromBackup || migratedLegacy) {
+        const saved = persistActiveSessionCandidate(
+            activeSession,
+            restoredFromBackup
+        );
+
+        if (!saved) {
+            activeSession = selectedCandidate.session;
+        }
+
+        if (restoredFromBackup) {
+            activeSessionRecoveryNotice =
+                "The newest save was invalid. GST restored the previous known-good snapshot.";
+        }
+    } else {
+        setSaveStatus("saved");
+    }
+
+    applyActiveSessionToRuntime(activeSession, false);
+
+    if (activeSession.mode === "scorecard") {
+        mirrorScorecardLegacyState();
+    }
+
+    if (activeSession.mode === "h2h") {
+        if (migratedLegacy) {
+            persistH2HActiveSession(false);
+        } else {
+            mirrorH2HLegacyState();
+        }
+    }
+
+    if (activeSession.mode === "shotTracking") {
+        mirrorShotTrackingLegacyState();
+    }
+
+    updateContinueRoundDisplay();
+    return true;
+}
+
+function showShotTrackingRoundScreen() {
+    setElementDisplay("homeCard", "none");
+    setElementDisplay("roundSetupCard", "none");
+    setElementDisplay("shotTrackerCard", "block");
+    setElementDisplay("summaryCard", "block");
+    setElementDisplay("recentShotsCard", "block");
+    setElementDisplay("scorecardCard", "block");
+
+    updateHoleDisplay(false);
+    renderShots();
+    renderScorecard();
+    updateSummary();
+}
+
+function continueActiveSession() {
+    if (!activeSession && !recoverActiveSessionState()) {
+        alert("No active round was found.");
+        return false;
+    }
+
+    applyActiveSessionToRuntime(activeSession, true);
+    return true;
+}
+
+function guardNewActiveSession(startLabel, startAction) {
+    if (!activeSession) {
+        startAction();
+        return true;
+    }
+
+    pendingActiveSessionStart = startAction;
+
+    const message = document.getElementById(
+        "activeSessionConflictMessage"
+    );
+
+    if (message) {
+        message.textContent =
+            `${getActiveSessionModeLabel(activeSession.mode)} is still active. ` +
+            `${startLabel} will not start unless the existing round is abandoned.`;
+    }
+
+    document.getElementById("activeSessionConflictPopup")
+        .classList.remove("hidden");
+    return false;
+}
+
+function closeActiveSessionConflictPopup() {
+    const popup = document.getElementById("activeSessionConflictPopup");
+
+    if (popup) {
+        popup.classList.add("hidden");
+    }
+}
+
+function continueExistingSessionFromConflict() {
+    pendingActiveSessionStart = null;
+    closeActiveSessionConflictPopup();
+    continueActiveSession();
+}
+
+function cancelActiveSessionConflict() {
+    pendingActiveSessionStart = null;
+    closeActiveSessionConflictPopup();
+}
+
+function removeValidLegacyKey(key, validator, predicate) {
+    const result = readStoredJsonResult(key);
+
+    if (
+        result.exists &&
+        result.valid &&
+        validator(result.value) &&
+        (!predicate || predicate(result.value))
+    ) {
+        localStorage.removeItem(key);
+    }
+}
+
+function clearModeSpecificActiveData(session, abandoned) {
+    if (session.mode === "scorecard") {
+        removeValidLegacyKey(
+            ACTIVE_SCORECARD_KEY,
+            isValidActiveScorecardRound,
+            function(value) {
+                return !value.sessionId || value.sessionId === session.id;
+            }
+        );
+        removeValidLegacyKey(
+            "simpleScorecard",
+            Array.isArray
+        );
+        localStorage.removeItem("scorecardHoleCount");
+
+        if (localStorage.getItem("roundMode") === "scorecard") {
+            localStorage.removeItem("roundMode");
+        }
+
+        activeScorecardRound = null;
+        simpleScorecard = [];
+        return;
+    }
+
+    if (session.mode === "h2h") {
+        removeValidLegacyKey(
+            "gstH2HMatch",
+            function(value) {
+                return isValidActiveH2HMatch(
+                    value,
+                    Number(value?.holeCount)
+                );
+            },
+            function(value) {
+                return !value.sessionId || value.sessionId === session.id;
+            }
+        );
+        h2hMatch = null;
+        return;
+    }
+
+    const roundId = session.state.round.id;
+
+    removeValidLegacyKey(
+        "currentRound",
+        isPlainObject,
+        function(value) {
+            return value.id === roundId;
+        }
+    );
+
+    if (abandoned) {
+        shots = shots.filter(function(shot) {
+            return shot.roundId !== roundId;
+        });
+        holes = holes.filter(function(hole) {
+            return hole.roundId !== roundId;
+        });
+        writeLegacyJson("shots", shots, Array.isArray);
+        writeLegacyJson("holes", holes, Array.isArray);
+    }
+
+    if (localStorage.getItem("roundMode") === "shotTracking") {
+        localStorage.removeItem("roundMode");
+    }
+
+    localStorage.removeItem("currentHole");
+    currentRound = null;
+    currentHole = 1;
+}
+
+function clearCurrentActiveSession(session, abandoned) {
+    clearVerifiedActiveSession(session.id);
+    clearModeSpecificActiveData(session, abandoned);
+    activeSession = null;
+    activeSessionCandidates = [];
+    setSaveStatus("hidden");
+    recoverActiveSessionState();
+}
+
+function abandonActiveSession(options) {
+    if (!activeSession) {
+        return false;
+    }
+
+    const confirmed = confirm(
+        `Abandon the active ${getActiveSessionModeLabel(activeSession.mode)}? ` +
+        "Its unsaved round progress will be removed."
+    );
+
+    if (!confirmed) {
+        return false;
+    }
+
+    const sessionToAbandon = activeSession;
+    clearCurrentActiveSession(sessionToAbandon, true);
+
+    if (!options?.stayOnCurrentScreen) {
+        goHome();
+    }
+
+    return true;
+}
+
+function abandonExistingSessionFromConflict() {
+    const startAction = pendingActiveSessionStart;
+    closeActiveSessionConflictPopup();
+
+    if (!abandonActiveSession({ stayOnCurrentScreen: true })) {
+        return;
+    }
+
+    pendingActiveSessionStart = null;
+
+    if (startAction) {
+        guardNewActiveSession("A new round", startAction);
+    }
+}
+
+function flushActiveSession() {
+    if (!activeSession) {
+        return;
+    }
+
+    if (activeSession.mode === "scorecard") {
+        persistScorecardActiveSession(false);
+        return;
+    }
+
+    if (activeSession.mode === "h2h") {
+        persistH2HActiveSession(false);
+        return;
+    }
+
+    persistShotTrackingActiveSession(false);
+}
+
+function reconcileInterruptedActiveCompletion() {
+    if (!activeSession) {
+        return false;
+    }
+
+    const sessionToReconcile = activeSession;
+
+    if (sessionToReconcile.mode === "scorecard") {
+        const completedRecords = getSavedRounds().filter(function(round) {
+            return round.id === sessionToReconcile.id;
+        });
+
+        if (completedRecords.length === 1) {
+            clearCurrentActiveSession(sessionToReconcile, false);
+            activeSessionRecoveryNotice =
+                "GST verified a previously completed round and prevented a duplicate save.";
+            updateContinueRoundDisplay();
+            return true;
+        }
+
+        return false;
+    }
+
+    if (sessionToReconcile.mode === "h2h") {
+        const linkedRounds = getSavedRounds().filter(function(round) {
+            return round.id === sessionToReconcile.id &&
+                round.source === "h2h-match";
+        });
+        const linkedMatches =
+            getSavedH2HMatches().filter(function(match) {
+                return match.id === sessionToReconcile.id;
+            });
+
+        if (
+            linkedRounds.length === 1 &&
+            linkedMatches.length === 1
+        ) {
+            clearCurrentActiveSession(sessionToReconcile, false);
+            activeSessionRecoveryNotice =
+                "GST verified a completed H2H pair and prevented duplicate records.";
+            updateContinueRoundDisplay();
+            return true;
+        }
+
+        if (
+            linkedRounds.length <= 1 &&
+            linkedMatches.length <= 1 &&
+            (linkedRounds.length === 1 || linkedMatches.length === 1) &&
+            isH2HMatchComplete()
+        ) {
+            const reconciled = completeH2HActiveSession(true);
+
+            if (reconciled) {
+                activeSessionRecoveryNotice =
+                    "GST reconciled an interrupted H2H save and prevented duplicate records.";
+                updateContinueRoundDisplay();
+            }
+
+            return reconciled;
+        }
+
+        return false;
+    }
+
+    const completedShotRounds =
+        getSavedShotTrackingRounds().filter(function(round) {
+            return round.id === sessionToReconcile.id;
+        });
+
+    if (completedShotRounds.length === 1) {
+        clearCurrentActiveSession(sessionToReconcile, false);
+        activeSessionRecoveryNotice =
+            "GST verified a previously completed Shot Tracking round and prevented a duplicate save.";
+        updateContinueRoundDisplay();
+        return true;
+    }
+
+    return false;
 }
 
 if (currentRound) {
@@ -439,10 +1595,14 @@ if (currentRound) {
 // ============================================================
 
 function startScorecardMode() {
+    return guardNewActiveSession(
+        "Regular Scorecard",
+        beginScorecardMode
+    );
+}
+
+function beginScorecardMode() {
     closeRoundModePopup();
-
-    localStorage.setItem("roundMode", "scorecard");
-
     showHoleCountPopup();
 }
 
@@ -492,31 +1652,24 @@ function isValidActiveScorecardRound(activeRound) {
 
 function persistActiveScorecardProgress() {
     if (!activeScorecardRound || simpleScorecard.length === 0) {
-        return;
+        return false;
     }
 
     activeScorecardRound.courseId = selectedCourseId;
     activeScorecardRound.holeCount = simpleScorecard.length;
     activeScorecardRound.holes = simpleScorecard;
 
-    saveActiveScorecardRound(activeScorecardRound);
-
-    // Continue writing the legacy progress keys for backward compatibility.
-    localStorage.setItem("simpleScorecard", JSON.stringify(simpleScorecard));
-    localStorage.setItem("scorecardHoleCount", activeScorecardRound.holeCount);
+    return persistScorecardActiveSession(true);
 }
 
 function clearActiveScorecardProgress() {
+    if (activeSession?.mode === "scorecard") {
+        clearCurrentActiveSession(activeSession, false);
+        return;
+    }
+
     activeScorecardRound = null;
     simpleScorecard = [];
-
-    clearActiveScorecardRound();
-    localStorage.removeItem("simpleScorecard");
-    localStorage.removeItem("scorecardHoleCount");
-
-    if (localStorage.getItem("roundMode") === "scorecard") {
-        localStorage.removeItem("roundMode");
-    }
 }
 
 function applyActiveScorecardRound(activeRound) {
@@ -524,62 +1677,19 @@ function applyActiveScorecardRound(activeRound) {
     simpleScorecard = activeRound.holes;
     selectedCourseId = activeRound.courseId;
 
-    localStorage.setItem("roundMode", "scorecard");
     persistActiveScorecardProgress();
 }
 
 function restoreActiveScorecardProgress() {
-    const storedActiveValue =
-        localStorage.getItem(ACTIVE_SCORECARD_KEY);
-
-    if (storedActiveValue !== null) {
-        const storedActiveRound = getActiveScorecardRound();
-
-        if (!isValidActiveScorecardRound(storedActiveRound)) {
-            console.warn("Active scorecard data was invalid and has been cleared.");
-            clearActiveScorecardProgress();
-            return false;
-        }
-
-        applyActiveScorecardRound(storedActiveRound);
-        return true;
+    if (!activeSession) {
+        recoverActiveSessionState();
     }
 
-    const legacyScorecardValue =
-        localStorage.getItem("simpleScorecard");
-
-    if (legacyScorecardValue === null) {
+    if (activeSession?.mode !== "scorecard") {
         return false;
     }
 
-    const legacyScorecard =
-        readStoredJson("simpleScorecard", null);
-    const legacyHoleCount =
-        Number(localStorage.getItem("scorecardHoleCount")) ||
-        (Array.isArray(legacyScorecard) ? legacyScorecard.length : 0);
-    const legacyCourseId =
-        courses[selectedCourseId] ? selectedCourseId : "whitinsville";
-    const legacyCurrentHole = Math.min(
-        Math.max(currentHole, 1),
-        legacyHoleCount
-    );
-    const migratedActiveRound = {
-        version: 1,
-        courseId: legacyCourseId,
-        holeCount: legacyHoleCount,
-        currentHole: legacyCurrentHole,
-        hciUsed: playerProfile.hci,
-        holes: legacyScorecard
-    };
-
-    if (!isValidActiveScorecardRound(migratedActiveRound)) {
-        console.warn("Legacy scorecard progress was invalid and has been cleared.");
-        clearActiveScorecardProgress();
-        return false;
-    }
-
-    applyActiveScorecardRound(migratedActiveRound);
-    return true;
+    return applyActiveSessionToRuntime(activeSession, false);
 }
 
 function resumeActiveScorecardRound() {
@@ -678,6 +1788,10 @@ function renderSimpleScorecard() {
         const holeDiv = document.createElement("div");
         holeDiv.className = "scorecard-hole";
 
+        if (activeScorecardRound?.currentHole === index + 1) {
+            holeDiv.classList.add("active-hole");
+        }
+
         const hciUsed = activeScorecardRound
             ? activeScorecardRound.hciUsed
             : playerProfile.hci;
@@ -768,7 +1882,7 @@ function saveSimpleScorecardProgress() {
         return;
     }
 
-    localStorage.setItem("simpleScorecard", JSON.stringify(simpleScorecard));
+    writeLegacyJson("simpleScorecard", simpleScorecard, Array.isArray);
 }
 
 function saveScorecardRound() {
@@ -781,6 +1895,16 @@ function saveScorecardRound() {
         return;
     }
 
+    if (!activeSession || activeSession.mode !== "scorecard") {
+        persistActiveScorecardProgress();
+    }
+
+    if (!activeSession || activeSession.mode !== "scorecard") {
+        alert("The active scorecard could not be prepared for saving.");
+        return;
+    }
+
+    const sessionToComplete = activeSession;
     const savedRounds = getSavedRounds();
     const scorecardCourseId = activeScorecardRound
         ? activeScorecardRound.courseId
@@ -789,24 +1913,61 @@ function saveScorecardRound() {
         ? activeScorecardRound.hciUsed
         : playerProfile.hci;
 
-const round = {
-    id: Date.now(),
-    date: new Date().toLocaleDateString(),
-    mode: "scorecard",
-    courseId: scorecardCourseId,
-    courseName: courses[scorecardCourseId].name,
-    holesPlayed: simpleScorecard.length,
-    hciUsed: scorecardHciUsed,
-    holes: simpleScorecard,
-    totalScore: simpleScorecard
-        .filter(hole => hole.score !== null)
-        .reduce((sum, hole) => sum + hole.score, 0)
-};
+    const round = {
+        schemaVersion: 1,
+        id: sessionToComplete.id,
+        createdAt: sessionToComplete.createdAt,
+        updatedAt: new Date().toISOString(),
+        date: new Date().toLocaleDateString(),
+        mode: "scorecard",
+        courseId: scorecardCourseId,
+        courseName: courses[scorecardCourseId].name,
+        holesPlayed: simpleScorecard.length,
+        hciUsed: scorecardHciUsed,
+        holes: simpleScorecard,
+        totalScore: simpleScorecard
+            .filter(hole => hole.score !== null)
+            .reduce((sum, hole) => sum + hole.score, 0)
+    };
 
-    savedRounds.push(round);
+    const existingRecords = savedRounds.filter(function(savedRound) {
+        return savedRound.id === sessionToComplete.id;
+    });
 
-    saveSavedRounds(savedRounds);
-    clearActiveScorecardProgress();
+    if (existingRecords.length > 1) {
+        setSaveStatus("failed");
+        alert(
+            "Round completion stopped because duplicate historical records " +
+            "already exist. The active round was preserved."
+        );
+        return;
+    }
+
+    try {
+        if (existingRecords.length === 0) {
+            saveSavedRounds(savedRounds.concat(round));
+        }
+
+        const verifiedRecords = getSavedRounds().filter(function(savedRound) {
+            return savedRound.id === sessionToComplete.id;
+        });
+
+        if (verifiedRecords.length !== 1) {
+            throw new Error(
+                "Completed scorecard verification did not find exactly one record."
+            );
+        }
+    } catch (error) {
+        console.error("Could not complete the scorecard round:", error);
+        setSaveStatus("failed");
+        alert(
+            "Save Failed. The completed round could not be verified, so the " +
+            "active round was preserved."
+        );
+        return;
+    }
+
+    clearCurrentActiveSession(sessionToComplete, false);
 
     alert("Scorecard round saved.");
 
@@ -814,21 +1975,12 @@ const round = {
 }
 
 function abandonCurrentScorecardRound() {
-    if (!activeScorecardRound) {
+    if (!activeScorecardRound || activeSession?.mode !== "scorecard") {
         goHome();
         return;
     }
 
-    const confirmed = confirm(
-        "Abandon current round? Unsaved scorecard progress will be lost."
-    );
-
-    if (!confirmed) {
-        return;
-    }
-
-    clearActiveScorecardProgress();
-    goHome();
+    abandonActiveSession();
 }
 
 // ============================================================
@@ -1038,8 +2190,13 @@ function renderRecentRounds() {
 
     const savedRounds = getSavedRounds();
     const savedH2HMatches = getSavedH2HMatches();
+    const savedShotTrackingRounds = getSavedShotTrackingRounds();
 
-    if (savedRounds.length === 0 && savedH2HMatches.length === 0) {
+    if (
+        savedRounds.length === 0 &&
+        savedH2HMatches.length === 0 &&
+        savedShotTrackingRounds.length === 0
+    ) {
         recentRoundsList.innerHTML =
             "<p class='empty-message'>No saved rounds yet.</p>";
         return;
@@ -1049,10 +2206,13 @@ function renderRecentRounds() {
         return { type: "scorecard", id: round.id, record: round };
     }).concat(savedH2HMatches.map(function(match) {
         return { type: "h2h-match", id: match.id, record: match };
+    })).concat(savedShotTrackingRounds.map(function(round) {
+        return { type: "shot-tracking", id: round.id, record: round };
     }));
 
     recentItems.sort(function(a, b) {
-        return b.id - a.id;
+        return getHistoricalRecordSortValue(b.record) -
+            getHistoricalRecordSortValue(a.record);
     });
 
     recentItems.forEach(function(item) {
@@ -1061,10 +2221,29 @@ function renderRecentRounds() {
             return;
         }
 
+        if (item.type === "shot-tracking") {
+            appendRecentShotTrackingCard(recentRoundsList, item.record);
+            return;
+        }
+
         appendRecentScorecardCard(recentRoundsList, item.record);
     });
 
     enableSwipeRevealDelete();
+}
+
+function getHistoricalRecordSortValue(record) {
+    if (isValidIsoTimestamp(record.updatedAt)) {
+        return Date.parse(record.updatedAt);
+    }
+
+    if (Number.isFinite(record.id)) {
+        return record.id;
+    }
+
+    const parsedDate = Date.parse(record.date);
+
+    return Number.isFinite(parsedDate) ? parsedDate : 0;
 }
 
 function createRecentSwipeCard(recordId, deleteHandler) {
@@ -1156,6 +2335,38 @@ function appendRecentH2HMatchCard(recentRoundsList, match) {
         <div class="h2h-recent-match-result">
             <strong>Result: ${resultLabel} — ${match.finalMatchStatus || "All Square"}</strong>
             <span>Score: ${playerName} ${match.playerTotalGross} | ${opponentName} ${match.opponentTotalGross}</span>
+        </div>
+    `;
+
+    recentRoundsList.appendChild(recentCard.swipeWrapper);
+}
+
+function appendRecentShotTrackingCard(recentRoundsList, round) {
+    const recentCard = createRecentSwipeCard(
+        round.id,
+        deleteShotTrackingRound
+    );
+    const shotCount = Array.isArray(round.shots)
+        ? round.shots.length
+        : 0;
+    const holeScoreCount = Array.isArray(round.holes)
+        ? round.holes.length
+        : 0;
+
+    recentCard.card.classList.add("shot-tracking-recent-card");
+    recentCard.card.onclick = function() {
+        recentCard.card.classList.remove("show-delete");
+    };
+    recentCard.card.innerHTML = `
+        <div>
+            <strong>Shot Tracking</strong>
+            <span>${round.courseName || round.course || "Golf Course"}</span>
+            <span>${round.date || "Saved round"}</span>
+        </div>
+
+        <div class="recent-round-score">
+            <strong>${shotCount}</strong>
+            <span>${shotCount === 1 ? "shot" : "shots"} • ${holeScoreCount} hole scores</span>
         </div>
     `;
 
@@ -1363,9 +2574,16 @@ function closeHoleCountPopup() {
 }
 
 function startScorecardRound(numberOfHoles) {
-    closeHoleCountPopup();
+    return guardNewActiveSession(
+        "Regular Scorecard",
+        function() {
+            beginScorecardRound(numberOfHoles);
+        }
+    );
+}
 
-    localStorage.setItem("scorecardHoleCount", numberOfHoles);
+function beginScorecardRound(numberOfHoles) {
+    closeHoleCountPopup();
 
     initializeScorecard(numberOfHoles);
     showScorecardScreen();
@@ -1618,6 +2836,15 @@ function loadH2HPlayerDefaults() {
 }
 
 function startH2HHoleByHole(holeCount) {
+    return guardNewActiveSession(
+        "Head-to-Head",
+        function() {
+            beginH2HHoleByHole(holeCount);
+        }
+    );
+}
+
+function beginH2HHoleByHole(holeCount) {
     const playerName = document.getElementById("h2hPlayerName").value || "G-Well";
     const playerHci = Number(document.getElementById("h2hPlayerHci").value) || 0;
 
@@ -1653,7 +2880,7 @@ function startH2HHoleByHole(holeCount) {
         }))
     };
 
-    localStorage.setItem("gstH2HMatch", JSON.stringify(h2hMatch));
+    persistH2HActiveSession(true);
 
     showH2HMatchScreen();
 }
@@ -2049,7 +3276,7 @@ function getH2HStrokeReceiver(playingHandicaps) {
     return "none";
 }
 
-function buildH2HScorecardRound(matchId, matchDate) {
+function buildH2HScorecardRound(matchId, matchDate, completedAt) {
     const player = h2hMatch.players[0];
     const scorecardHoles = h2hMatch.holes.map(function(hole, holeIndex) {
         return {
@@ -2069,7 +3296,11 @@ function buildH2HScorecardRound(matchId, matchDate) {
     }, 0);
 
     return {
+        schemaVersion: 1,
         id: matchId,
+        relationshipId: matchId,
+        createdAt: activeSession?.createdAt || completedAt,
+        updatedAt: completedAt,
         type: "scorecard",
         source: "h2h-match",
         linkedH2HMatchId: matchId,
@@ -2086,7 +3317,7 @@ function buildH2HScorecardRound(matchId, matchDate) {
     };
 }
 
-function buildSavedH2HMatch(matchId, matchDate) {
+function buildSavedH2HMatch(matchId, matchDate, completedAt) {
     const player = h2hMatch.players[0];
     const opponent = h2hMatch.players[1];
     const playingHandicaps = getH2HMatchPlayingHandicaps();
@@ -2112,7 +3343,11 @@ function buildSavedH2HMatch(matchId, matchDate) {
     });
 
     return {
+        schemaVersion: 1,
         id: matchId,
+        relationshipId: matchId,
+        createdAt: activeSession?.createdAt || completedAt,
+        updatedAt: completedAt,
         type: "h2h-match",
         date: matchDate,
         courseId: h2hMatch.courseId || selectedCourseId,
@@ -2140,52 +3375,126 @@ function buildSavedH2HMatch(matchId, matchDate) {
 }
 
 function saveH2HMatch() {
+    return completeH2HActiveSession(false);
+}
+
+function completeH2HActiveSession(silent) {
     if (!h2hMatch || !isH2HMatchComplete()) {
-        alert("Enter both players' scores for every hole before saving the match.");
-        return;
+        if (!silent) {
+            alert("Enter both players' scores for every hole before saving the match.");
+        }
+        return false;
+    }
+
+    if (!activeSession || activeSession.mode !== "h2h") {
+        persistH2HActiveSession(true);
+    }
+
+    if (!activeSession || activeSession.mode !== "h2h") {
+        if (!silent) {
+            alert("The active H2H match could not be prepared for saving.");
+        }
+        return false;
     }
 
     const savedRounds = getSavedRounds();
     const savedH2HMatches = getSavedH2HMatches();
-    let matchId = Date.now();
-
-    while (
-        savedRounds.some(round => round.id === matchId) ||
-        savedH2HMatches.some(match => match.id === matchId)
-    ) {
-        matchId++;
-    }
-
+    const sessionToComplete = activeSession;
+    const matchId = sessionToComplete.id;
     const matchDate = new Date().toLocaleDateString();
-    const scorecardRound = buildH2HScorecardRound(matchId, matchDate);
-    const savedH2HMatch = buildSavedH2HMatch(matchId, matchDate);
+    const completedAt = new Date().toISOString();
+    const scorecardRound = buildH2HScorecardRound(
+        matchId,
+        matchDate,
+        completedAt
+    );
+    const savedH2HMatch = buildSavedH2HMatch(
+        matchId,
+        matchDate,
+        completedAt
+    );
+    const existingRounds = savedRounds.filter(function(round) {
+        return round.id === matchId;
+    });
+    const existingMatches = savedH2HMatches.filter(function(match) {
+        return match.id === matchId;
+    });
+
+    if (
+        existingRounds.length > 1 ||
+        existingMatches.length > 1 ||
+        (
+            existingRounds.length === 1 &&
+            existingRounds[0].source !== "h2h-match"
+        ) ||
+        (
+            existingMatches.length === 1 &&
+            existingMatches[0].type !== "h2h-match"
+        )
+    ) {
+        setSaveStatus("failed");
+
+        if (!silent) {
+            alert(
+                "Match completion stopped because conflicting historical " +
+                "records already exist. The active match was preserved."
+            );
+        }
+        return false;
+    }
 
     try {
-        saveSavedRounds(savedRounds.concat(scorecardRound));
-        saveSavedH2HMatches(savedH2HMatches.concat(savedH2HMatch));
-    } catch (error) {
-        console.error("Could not save H2H match:", error);
-
-        try {
-            saveSavedRounds(savedRounds);
-            saveSavedH2HMatches(savedH2HMatches);
-        } catch (rollbackError) {
-            console.error("Could not restore saved data after H2H save failure:", rollbackError);
+        if (existingRounds.length === 0) {
+            saveSavedRounds(savedRounds.concat(scorecardRound));
         }
 
-        alert("Match could not be saved. Your existing saved rounds were preserved.");
-        return;
+        if (existingMatches.length === 0) {
+            saveSavedH2HMatches(savedH2HMatches.concat(savedH2HMatch));
+        }
+
+        const verifiedRounds = getSavedRounds().filter(function(round) {
+            return round.id === matchId &&
+                round.source === "h2h-match";
+        });
+        const verifiedMatches =
+            getSavedH2HMatches().filter(function(match) {
+                return match.id === matchId &&
+                    match.type === "h2h-match";
+            });
+
+        if (
+            verifiedRounds.length !== 1 ||
+            verifiedMatches.length !== 1
+        ) {
+            throw new Error(
+                "The linked H2H completion records could not be verified."
+            );
+        }
+    } catch (error) {
+        console.error("Could not save H2H match:", error);
+        setSaveStatus("failed");
+
+        if (!silent) {
+            alert(
+                "Match could not be fully verified. The active match and any " +
+                "successfully written linked record were preserved for recovery."
+            );
+        }
+        return false;
     }
 
-    localStorage.removeItem("gstH2HMatch");
-    h2hMatch = null;
+    clearCurrentActiveSession(sessionToComplete, false);
 
-    alert(
-        "Match saved. Your round was added to Recent Rounds, and the H2H " +
-        `match was saved as Versus ${savedH2HMatch.opponentName}.`
-    );
+    if (!silent) {
+        alert(
+            "Match saved. Your round was added to Recent Rounds, and the H2H " +
+            `match was saved as Versus ${savedH2HMatch.opponentName}.`
+        );
 
-    showRecentRounds();
+        showRecentRounds();
+    }
+
+    return true;
 }
 
 function deleteH2HMatch(matchId) {
@@ -2200,6 +3509,23 @@ function deleteH2HMatch(matchId) {
     });
 
     saveSavedH2HMatches(savedMatches);
+    showRecentRounds();
+}
+
+function deleteShotTrackingRound(roundId) {
+    const confirmed = confirm(
+        "Delete this Shot Tracking round? This cannot be undone."
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    const savedRounds = getSavedShotTrackingRounds().filter(function(round) {
+        return round.id !== roundId;
+    });
+
+    saveSavedShotTrackingRounds(savedRounds);
     showRecentRounds();
 }
 
@@ -2233,6 +3559,10 @@ function renderH2HMatchScorecard() {
         const holeDiv = document.createElement("div");
 
         holeDiv.className = "scorecard-hole h2h-match-hole";
+
+        if (h2hMatch.currentHole === holeIndex + 1) {
+            holeDiv.classList.add("active-hole");
+        }
         holeDiv.innerHTML = `
             <div class="hole-number">${hole.holeNumber}</div>
 
@@ -2350,7 +3680,7 @@ function previousH2HHole() {
 }
 
 function persistH2HMatch() {
-    localStorage.setItem("gstH2HMatch", JSON.stringify(h2hMatch));
+    return persistH2HActiveSession(true);
 }
 
 function getH2HStrokesForHole(playerHci, hole) {
@@ -2460,6 +3790,15 @@ function formatH2HLead(player1Name, player2Name, player1Wins, player2Wins) {
     return `${player2Name} +${Math.abs(diff)}`;
 }
 
+function abandonCurrentH2HMatch() {
+    if (activeSession?.mode !== "h2h") {
+        showHome();
+        return;
+    }
+
+    abandonActiveSession();
+}
+
 // ============================================================
 // Shot data maintenance and export
 // ============================================================
@@ -2472,10 +3811,11 @@ function clearShots() {
 
     shots = [];
 
-    localStorage.setItem(
-        "shots",
-        JSON.stringify(shots)
-    );
+    if (activeSession?.mode === "shotTracking") {
+        persistShotTrackingActiveSession(true);
+    } else {
+        writeLegacyJson("shots", shots, Array.isArray);
+    }
 
     renderShots();
     updateSummary();
@@ -2505,6 +3845,95 @@ function exportShots() {
     URL.revokeObjectURL(url);
 }
 
+function completeShotTrackingRound() {
+    if (!currentRound) {
+        alert("No active Shot Tracking round was found.");
+        return false;
+    }
+
+    if (!activeSession || activeSession.mode !== "shotTracking") {
+        persistShotTrackingActiveSession(true);
+    }
+
+    if (!activeSession || activeSession.mode !== "shotTracking") {
+        alert("The active Shot Tracking round could not be prepared.");
+        return false;
+    }
+
+    const sessionToComplete = activeSession;
+    const savedRounds = getSavedShotTrackingRounds();
+    const existingRecords = savedRounds.filter(function(round) {
+        return round.id === sessionToComplete.id;
+    });
+
+    if (existingRecords.length > 1) {
+        setSaveStatus("failed");
+        alert(
+            "Shot Tracking completion stopped because duplicate historical " +
+            "records already exist. The active round was preserved."
+        );
+        return false;
+    }
+
+    const completedRound = {
+        schemaVersion: 1,
+        id: sessionToComplete.id,
+        createdAt: sessionToComplete.createdAt,
+        updatedAt: new Date().toISOString(),
+        type: "shot-tracking",
+        mode: "shotTracking",
+        date: currentRound.date,
+        courseId: sessionToComplete.course.id,
+        courseName: sessionToComplete.course.name,
+        tee: sessionToComplete.course.tee,
+        holesPlayed: sessionToComplete.holeCount,
+        hciUsed: sessionToComplete.player.hci,
+        shots: cloneJsonValue(sessionToComplete.state.shots),
+        holes: cloneJsonValue(sessionToComplete.state.holes)
+    };
+
+    try {
+        if (existingRecords.length === 0) {
+            saveSavedShotTrackingRounds(
+                savedRounds.concat(completedRound)
+            );
+        }
+
+        const verifiedRecords =
+            getSavedShotTrackingRounds().filter(function(round) {
+                return round.id === sessionToComplete.id;
+            });
+
+        if (verifiedRecords.length !== 1) {
+            throw new Error(
+                "Completed Shot Tracking verification did not find exactly one record."
+            );
+        }
+    } catch (error) {
+        console.error("Could not complete the Shot Tracking round:", error);
+        setSaveStatus("failed");
+        alert(
+            "Save Failed. The completed Shot Tracking round could not be " +
+            "verified, so the active round was preserved."
+        );
+        return false;
+    }
+
+    clearCurrentActiveSession(sessionToComplete, false);
+    alert("Shot Tracking round saved.");
+    showRecentRounds();
+    return true;
+}
+
+function abandonCurrentShotTrackingRound() {
+    if (activeSession?.mode !== "shotTracking") {
+        showHome();
+        return;
+    }
+
+    abandonActiveSession();
+}
+
 // ============================================================
 // Navigation and statistics
 // ============================================================
@@ -2519,26 +3948,7 @@ function showRoundSetup() {
 }
 
 function continueRound() {
-    if (resumeActiveScorecardRound()) {
-        return;
-    }
-
-    if (!currentRound) {
-        alert("No existing round found. Start a new round first.");
-        return;
-    }
-
-    setElementDisplay("homeCard", "none");
-    setElementDisplay("roundSetupCard", "none");
-    setElementDisplay("shotTrackerCard", "block");
-    setElementDisplay("summaryCard", "block");
-    setElementDisplay("recentShotsCard", "block");
-    setElementDisplay("scorecardCard", "block");
-
-    updateHoleDisplay();
-    renderShots();
-    renderScorecard();
-    updateSummary();
+    return continueActiveSession();
 }
 
 function showStats() {
@@ -2680,12 +4090,14 @@ function closeRoundModePopup() {
 }
 
 function startShotTrackingMode() {
+    return guardNewActiveSession(
+        "Shot Tracking",
+        beginShotTrackingMode
+    );
+}
+
+function beginShotTrackingMode() {
     closeRoundModePopup();
-
-    // Save selected mode
-    localStorage.setItem("roundMode", "shotTracking");
-
-    // Existing full tracker flow
     showRoundSetup();
 }
 
@@ -2699,9 +4111,11 @@ function showHome() {
 
 function initializeApp() {
     loadPlayerProfile();
-    restoreActiveScorecardProgress();
+    recoverActiveSessionState();
+    reconcileInterruptedActiveCompletion();
     renderShots();
     updateSummary();
+    updateContinueRoundDisplay();
 
     setElementDisplay("roundSetupCard", "none");
     setElementDisplay("shotTrackerCard", "none");
@@ -2711,6 +4125,18 @@ function initializeApp() {
 }
 
 initializeApp();
+
+if (typeof document.addEventListener === "function") {
+    document.addEventListener("visibilitychange", function() {
+        if (document.visibilityState === "hidden") {
+            flushActiveSession();
+        }
+    });
+}
+
+window.addEventListener("pagehide", function() {
+    flushActiveSession();
+});
 
 window.addEventListener("load", function() {
 

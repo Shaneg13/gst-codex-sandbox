@@ -6,11 +6,12 @@
 2. [Test Levels](#test-levels)
 3. [Automated Verification](#automated-verification)
 4. [Local Manual Smoke Test](#local-manual-smoke-test)
-5. [GitHub Pages and Phone Test](#github-pages-and-phone-test)
-6. [Persistence Test Data](#persistence-test-data)
-7. [Pass and Failure Criteria](#pass-and-failure-criteria)
-8. [Known Limitations](#known-limitations)
-9. [Test Report Template](#test-report-template)
+5. [Crash-Safe Active Session Device Recovery](#crash-safe-active-session-device-recovery)
+6. [GitHub Pages and Phone Test](#github-pages-and-phone-test)
+7. [Persistence Test Data](#persistence-test-data)
+8. [Pass and Failure Criteria](#pass-and-failure-criteria)
+9. [Known Limitations](#known-limitations)
+10. [Test Report Template](#test-report-template)
 
 ## Purpose
 
@@ -168,7 +169,113 @@ Use a test browser profile so the steps do not mix with real golf data.
 
 #### Corrupted Progress Recovery
 
-This is covered automatically by `node scripts/verify-app.js`. Do not corrupt LocalStorage manually in a real user profile.
+This is covered automatically by `node scripts/verify-app.js`. Do not corrupt LocalStorage manually in a real user profile. The verifier confirms the invalid raw value is preserved and the previous known-good snapshot is restored.
+
+## Crash-Safe Active Session Device Recovery
+
+Use a dedicated test browser profile or installed-app test environment. Do not
+run destructive storage steps in a profile containing real rounds.
+
+Record the phone model, operating-system version, browser version, installed-app
+status, deployed GST URL, and whether the device was online for each run.
+
+### Regular Scorecard — Required 18-Hole Lifecycle
+
+1. Start an 18-hole Regular Scorecard round.
+2. Confirm the header displays `Saved`.
+3. Enter scores on several front-nine and back-nine holes.
+4. Confirm every score change returns from `Saving…` to `Saved`.
+5. Remember the last hole changed and every entered score.
+6. Return Home and confirm Continue Round displays:
+   - Regular Scorecard
+   - Course
+   - 18 holes
+   - Correct current hole
+   - Last saved time
+7. Refresh the page.
+8. Select Continue Round and confirm the exact scores, HCI, course, tee routing,
+   and current hole.
+9. Close the browser tab completely.
+10. Reopen GST and repeat the Continue verification.
+11. Swipe the installed app or browser completely closed.
+12. Reopen GST and repeat the Continue verification.
+13. Switch to another app for at least 15 minutes.
+14. Return to GST and repeat the Continue verification.
+15. Lock the phone for at least five minutes.
+16. Unlock it and repeat the Continue verification.
+17. Enable airplane mode or otherwise remove network access.
+18. Reopen GST while offline and repeat the Continue verification.
+19. Enter additional scores while offline.
+20. Close and reopen GST again while still offline.
+21. Confirm every additional score is restored.
+22. Restore network access.
+23. Enter the remaining scores and save the completed round.
+24. Confirm the round appears exactly once in Recent Rounds.
+25. Confirm its Round Detail is correct.
+26. Confirm Continue Round reports no active round.
+
+Repeat the full sequence with a 9-hole scorecard before release if scorecard,
+course, or persistence code changed after the 18-hole test.
+
+### Head-to-Head Lifecycle
+
+1. Start a 9-hole Hole-by-Hole Match.
+2. Record both players' names and HCIs.
+3. Enter both scores on at least three holes.
+4. Confirm `Saved` after every score change.
+5. Refresh, select Continue Round, and verify:
+   - Head-to-Head opens
+   - Both players and HCIs
+   - Opponent information
+   - Both score arrays
+   - Current hole
+   - Playing Handicaps
+   - Current hole result
+   - Current match status
+6. Repeat browser-close, installed-app-close, app-switch, lock/unlock, and
+   offline reopen steps from the Regular Scorecard checklist.
+7. Complete and save the restored match.
+8. Confirm Recent Rounds contains exactly one linked G-Well Scorecard and one
+   H2H Match card.
+9. Refresh again and confirm neither record is duplicated.
+10. Confirm Continue Round no longer displays the completed H2H session.
+11. Repeat an appropriate recovery sample with an 18-hole H2H match.
+
+### Shot Tracking Lifecycle
+
+1. Start a Shot Tracking round.
+2. Record multiple shots on multiple holes.
+3. Save at least two hole scores.
+4. Navigate to a later hole.
+5. Confirm `Saved` after every shot, hole score, and hole change.
+6. Refresh and select Continue Round.
+7. Confirm the exact course, round date, current hole, shots, shot order,
+   shot details, and hole scores.
+8. Repeat browser-close, installed-app-close, app-switch, lock/unlock, and
+   offline reopen steps from the Regular Scorecard checklist.
+9. From the recovered round, attempt to start another mode.
+10. Confirm the Active Round Found dialog offers Continue Existing Round,
+    Abandon Existing Round, and Cancel.
+11. Select Cancel and confirm the original Shot Tracking round is unchanged.
+12. Complete the Shot Tracking round.
+13. Confirm exactly one Shot Tracking card appears in Recent Rounds.
+14. Refresh and confirm the completed record remains and Continue Round has no
+    active session.
+
+### Abandonment and Save Status
+
+1. Create one completed Scorecard round and one completed H2H match.
+2. Start a new active session and enter data.
+3. Select Abandon and cancel the confirmation once.
+4. Confirm the active session remains.
+5. Confirm abandonment on the second attempt.
+6. Confirm only the selected active session is removed.
+7. Confirm completed rounds, H2H history, profile HCI, Stats, and unrelated
+   Shot Tracking data remain.
+8. If a test environment can simulate blocked/quota-exceeded LocalStorage,
+   confirm the header displays the full `Save Failed` warning and GST keeps the
+   latest in-memory state available for retry.
+9. Never intentionally fill or corrupt storage in a real-data profile.
 
 ## GitHub Pages and Phone Test
 
