@@ -73,6 +73,10 @@ Current keys that form compatibility contracts include:
 - `gstPlayerProfile`
 - `gstH2HMatch`
 - `gstActiveScorecardRound`
+- `gstActiveSession`
+- `gstActiveSessionPrevious`
+- `gstInvalidActiveSessionRecords`
+- `gstShotTrackingRounds`
 
 ### 5. State Management
 
@@ -154,15 +158,15 @@ For this behavior-preserving pass:
 
 ### Field-Test Hardening Follow-ups
 
-1. Treat `gstActiveScorecardRound.version` as a migration boundary if the active-round schema changes.
-2. Add real-device lifecycle tests for backgrounding, force-closing, reopening, and Add to Home Screen storage behavior.
-3. Define an explicit one-active-round policy before allowing scorecard and shot-tracking rounds to coexist or switch without completion.
-4. Add a visible current-hole affordance only as a separately reviewed UI change; the current hardening pass preserves the existing layout.
+1. `gstActiveSession` schema version 2 is now the canonical active-session boundary; retain version-1 and legacy adapters until real-data migrations are proven.
+2. The explicit one-active-golf-session policy now protects Regular Scorecard, H2H, and Shot Tracking start paths from silent overwrite.
+3. Run the documented real-device lifecycle tests for backgrounding, force-closing, reopening, offline use, and Add to Home Screen behavior before release.
+4. Keep `gstActiveSessionPrevious` and invalid-record preservation until a complete backup/restore phase provides an equivalent or stronger recovery path.
 
 ### Head-to-Head Match Play Follow-ups
 
 1. Expand Playing Handicap match-play fixtures beyond the current Whitinsville 9-hole 11-stroke case to cover multiple tee ratings/slopes, plus handicaps, and additional 18-hole matches.
-2. Version both `gstH2HMatch` and the new `gstH2HMatches` records before changing their schemas or adding automatic match resume.
+2. H2H active matches now resume through canonical schema version 2; version completed `gstH2HMatches` records through an explicit migration before future shape changes.
 3. Preserve the current separation: G-Well's linked scorecard belongs in `savedScorecardRounds`, while opponent and match-result data belongs only in `gstH2HMatches`.
 4. Extract shared score-control rendering only after both Scorecard Mode and H2H visual behavior have real-browser regression coverage.
 5. Move tee rating, slope, par, and routing into a validated course/tee schema before adding more courses.
@@ -171,6 +175,8 @@ For this behavior-preserving pass:
 ## Important Logic and Data Contracts
 
 - LocalStorage key names are public compatibility contracts for existing browser data.
+- `gstActiveSession` is the canonical active source; mode-specific legacy keys remain compatibility mirrors and migration sources.
+- Active writes are not confirmed until write/read-back structural validation succeeds, and the previous verified snapshot must remain recoverable.
 - Saved-round objects and their nested `holes` arrays must remain structurally unchanged unless a future migration is introduced.
 - `gstH2HMatches` is a separate match-history contract and must not be included in regular scorecard-stat calculations.
 - H2H-generated scorecards use `source: "h2h-match"` and `linkedH2HMatchId` but retain the existing hole shape required by Recent Rounds, Round Detail, and Stats.

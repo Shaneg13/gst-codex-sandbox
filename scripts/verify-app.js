@@ -404,8 +404,8 @@ function verifyMalformedStorageStartup(indexHtml, scriptSources) {
         "App initializes safely with malformed LocalStorage"
     );
     assert(
-        !storage.has("gstActiveScorecardRound"),
-        "Malformed active scorecard data is cleared safely"
+        storage.get("gstActiveScorecardRound") === "{invalid json",
+        "Malformed active scorecard data is preserved safely"
     );
     assert(harness.consoleErrors.length === 0, "Malformed startup has no console errors");
     assert(harness.consoleWarnings.length >= 7, "Malformed values use defensive fallbacks");
@@ -442,6 +442,605 @@ function verifyLegacyScorecardMigration(indexHtml, scriptSources) {
     assert(
         storage.has("gstActiveScorecardRound"),
         "Legacy migration writes the versioned active-round key"
+    );
+    assert(
+        JSON.parse(storage.get("gstActiveSession")).schemaVersion === 2,
+        "Legacy migration writes the canonical active-session record"
+    );
+}
+
+function verifyRegularFreshRuntimeRecovery(indexHtml, scriptSources) {
+    const nineHoleStorage = createStorage();
+    let harness = createAppHarness(
+        indexHtml,
+        scriptSources,
+        nineHoleStorage
+    );
+    let evaluate = source => harness.evaluate(source);
+
+    evaluate(
+        "startScorecardRound(9); " +
+        "increaseScore(0); increaseScore(4); decreaseScore(4)"
+    );
+
+    const nineHoleSession =
+        JSON.parse(nineHoleStorage.get("gstActiveSession"));
+    const nineHoleId = nineHoleSession.id;
+
+    assert(
+        nineHoleSession.schemaVersion === 2 &&
+        nineHoleSession.mode === "scorecard" &&
+        nineHoleSession.status === "active" &&
+        typeof nineHoleId === "string" &&
+        nineHoleId.length >= 8 &&
+        Number.isFinite(Date.parse(nineHoleSession.createdAt)) &&
+        Number.isFinite(Date.parse(nineHoleSession.updatedAt)),
+        "Recovery: regular active records have IDs, status, schema, and timestamps"
+    );
+
+    harness = createAppHarness(
+        indexHtml,
+        scriptSources,
+        nineHoleStorage
+    );
+    evaluate = source => harness.evaluate(source);
+    evaluate("continueRound()");
+
+    assert(
+        evaluate(
+            "activeSession.id === " + JSON.stringify(nineHoleId) + " && " +
+            "activeSession.mode === 'scorecard' && " +
+            "activeScorecardRound.currentHole === 5 && " +
+            "simpleScorecard[0].score === simpleScorecard[0].par && " +
+            "simpleScorecard[4].score === simpleScorecard[4].par - 1"
+        ),
+        "Recovery: fresh runtime resumes a 9-hole scorecard exactly"
+    );
+
+    for (let cycle = 0; cycle < 3; cycle++) {
+        harness = createAppHarness(
+            indexHtml,
+            scriptSources,
+            nineHoleStorage
+        );
+    }
+
+    assert(
+        harness.evaluate(
+            "activeSession.id === " + JSON.stringify(nineHoleId) + " && " +
+            "simpleScorecard[0].score === simpleScorecard[0].par && " +
+            "simpleScorecard[4].score === simpleScorecard[4].par - 1 && " +
+            "getSavedRounds().length === 0"
+        ),
+        "Recovery: repeated fresh runtimes preserve one regular active session"
+    );
+
+    const eighteenHoleStorage = createStorage({
+        gstPlayerProfile: JSON.stringify({
+            name: "G-Well",
+            hci: 22.7
+        })
+    });
+
+    harness = createAppHarness(
+        indexHtml,
+        scriptSources,
+        eighteenHoleStorage
+    );
+    evaluate = source => harness.evaluate(source);
+    evaluate(
+        "startScorecardRound(18); " +
+        "increaseScore(0); increaseScore(9); increaseScore(14)"
+    );
+
+    const eighteenHoleSession =
+        JSON.parse(eighteenHoleStorage.get("gstActiveSession"));
+
+    harness = createAppHarness(
+        indexHtml,
+        scriptSources,
+        eighteenHoleStorage
+    );
+    evaluate = source => harness.evaluate(source);
+    evaluate("continueRound()");
+
+    assert(
+        evaluate(
+            "activeSession.id === " +
+                JSON.stringify(eighteenHoleSession.id) + " && " +
+            "activeSession.holeCount === 18 && " +
+            "activeSession.currentHole === 15 && " +
+            "activeSession.course.id === 'whitinsville' && " +
+            "activeSession.course.tee === 'Front 9 White / Back 9 Blue' && " +
+            "activeSession.player.hci === 22.7 && " +
+            "simpleScorecard[0].score === simpleScorecard[0].par && " +
+            "simpleScorecard[9].score === simpleScorecard[9].par && " +
+            "simpleScorecard[14].score === simpleScorecard[14].par"
+        ),
+        "Recovery: fresh runtime resumes an 18-hole scorecard with exact course, tee, HCI, hole, and scores"
+    );
+}
+
+function verifyH2HFreshRuntimeRecovery(indexHtml, scriptSources) {
+    const storage = createStorage({
+        gstPlayerProfile: JSON.stringify({
+            name: "G-Well",
+            hci: 25.6
+        })
+    });
+    let harness = createAppHarness(indexHtml, scriptSources, storage);
+    let evaluate = source => harness.evaluate(source);
+
+    harness.document.getElementById("h2hPlayerName").value = "G-Well";
+    harness.document.getElementById("h2hPlayerHci").value = "25.6";
+    harness.document.getElementById("h2hOpponentName").value = "Recovery Mike";
+    harness.document.getElementById("h2hOpponentHci").value = "7.4";
+    evaluate(
+        "startH2HHoleByHole(9); " +
+        "adjustH2HScore('player1', 1, 0); " +
+        "adjustH2HScore('player2', 1, 0); " +
+        "adjustH2HScore('player1', 1, 5); " +
+        "adjustH2HScore('player2', 1, 5)"
+    );
+
+    const activeId = JSON.parse(storage.get("gstActiveSession")).id;
+
+    harness = createAppHarness(indexHtml, scriptSources, storage);
+    evaluate = source => harness.evaluate(source);
+    evaluate("continueRound()");
+
+    assert(
+        evaluate(
+            "activeSession.id === " + JSON.stringify(activeId) + " && " +
+            "activeSession.mode === 'h2h' && h2hMatch.currentHole === 6 && " +
+            "h2hMatch.players[1].name === 'Recovery Mike' && " +
+            "h2hMatch.players[1].hci === 7.4 && " +
+            "h2hMatch.scores[0].player1 === h2hMatch.holes[0].par && " +
+            "h2hMatch.scores[0].player2 === h2hMatch.holes[0].par && " +
+            "h2hMatch.scores[5].player1 === h2hMatch.holes[5].par && " +
+            "getH2HMatchPlayingHandicaps().difference === 11 && " +
+            "getH2HMatchPlayStatus(8) === activeSession.state.matchStatus"
+        ),
+        "Recovery: fresh runtime restores H2H players, scores, hole, handicaps, and match status"
+    );
+
+    evaluate(
+        "h2hMatch.holes.forEach(function(hole, index) { " +
+            "if (h2hMatch.scores[index].player1 === null) " +
+                "h2hMatch.scores[index].player1 = hole.par; " +
+            "if (h2hMatch.scores[index].player2 === null) " +
+                "h2hMatch.scores[index].player2 = hole.par; " +
+        "}); persistH2HMatch(); saveH2HMatch();"
+    );
+
+    assert(
+        evaluate(
+            "getSavedRounds().filter(function(round) { " +
+                "return round.id === " + JSON.stringify(activeId) + "; " +
+            "}).length === 1 && " +
+            "getSavedH2HMatches().filter(function(match) { " +
+                "return match.id === " + JSON.stringify(activeId) + "; " +
+            "}).length === 1 && activeSession === null"
+        ),
+        "Recovery: restored H2H match completes exactly once"
+    );
+
+    harness = createAppHarness(indexHtml, scriptSources, storage);
+
+    assert(
+        harness.evaluate(
+            "getSavedRounds().filter(function(round) { " +
+                "return round.id === " + JSON.stringify(activeId) + "; " +
+            "}).length === 1 && " +
+            "getSavedH2HMatches().filter(function(match) { " +
+                "return match.id === " + JSON.stringify(activeId) + "; " +
+            "}).length === 1 && activeSession === null"
+        ),
+        "Recovery: H2H completion remains deduplicated after another fresh runtime"
+    );
+}
+
+function verifyShotTrackingFreshRuntimeRecovery(indexHtml, scriptSources) {
+    const storage = createStorage();
+    let harness = createAppHarness(indexHtml, scriptSources, storage);
+    let evaluate = source => harness.evaluate(source);
+
+    harness.document.getElementById("courseInput").value =
+        "Recovery Course";
+    harness.document.getElementById("dateInput").value = "2026-07-26";
+    evaluate("saveRound()");
+
+    harness.document.getElementById("clubInput").value = "7 Iron";
+    harness.document.getElementById("distanceInput").value = "151";
+    harness.document.getElementById("resultInput").value = "Good";
+    harness.document.getElementById("lieInput").value = "Fairway";
+    evaluate("saveShot()");
+
+    harness.document.getElementById("parInput").value = "4";
+    harness.document.getElementById("scoreInput").value = "5";
+    evaluate("saveHole(); nextHole()");
+
+    harness.document.getElementById("clubInput").value = "PW";
+    harness.document.getElementById("distanceInput").value = "112";
+    harness.document.getElementById("resultInput").value = "Green";
+    harness.document.getElementById("lieInput").value = "Fairway";
+    evaluate("saveShot()");
+
+    const activeSessionBeforeRefresh =
+        JSON.parse(storage.get("gstActiveSession"));
+    const legacyRoundId =
+        JSON.parse(storage.get("currentRound")).id;
+
+    harness = createAppHarness(indexHtml, scriptSources, storage);
+    evaluate = source => harness.evaluate(source);
+    evaluate("continueRound()");
+
+    assert(
+        evaluate(
+            "activeSession.id === " +
+                JSON.stringify(activeSessionBeforeRefresh.id) + " && " +
+            "activeSession.mode === 'shotTracking' && currentHole === 2 && " +
+            "currentRound.id === " + JSON.stringify(legacyRoundId) + " && " +
+            "currentRound.course === 'Recovery Course' && " +
+            "activeSession.state.shots.length === 2 && " +
+            "activeSession.state.holes.length === 1 && " +
+            "shots.filter(function(shot) { return shot.roundId === currentRound.id; }).length === 2"
+        ),
+        "Recovery: fresh runtime restores Shot Tracking round, hole, shots, and hole scores"
+    );
+
+    harness.document.getElementById("courseInput").value =
+        "Overwrite Attempt";
+    harness.document.getElementById("dateInput").value = "2026-07-27";
+    evaluate("saveRound()");
+
+    assert(
+        harness.document.getElementById("activeSessionConflictPopup")
+            .classList.contains("hidden") === false &&
+        evaluate(
+            "currentRound.id === " + JSON.stringify(legacyRoundId) + " && " +
+            "activeSession.id === " +
+                JSON.stringify(activeSessionBeforeRefresh.id)
+        ),
+        "Recovery: starting another Shot Tracking round cannot overwrite the active session"
+    );
+
+    evaluate("cancelActiveSessionConflict(); completeShotTrackingRound()");
+
+    assert(
+        evaluate(
+            "getSavedShotTrackingRounds().filter(function(round) { " +
+                "return round.id === " +
+                    JSON.stringify(activeSessionBeforeRefresh.id) + "; " +
+            "}).length === 1 && activeSession === null"
+        ),
+        "Recovery: Shot Tracking completion writes one verified historical record"
+    );
+}
+
+function verifyKnownGoodFallbackAndWriteFailure(indexHtml, scriptSources) {
+    const storage = createStorage();
+    let harness = createAppHarness(indexHtml, scriptSources, storage);
+    let evaluate = source => harness.evaluate(source);
+
+    evaluate("startScorecardRound(9); increaseScore(0); increaseScore(1)");
+    const invalidRawValue = "{newest snapshot interrupted";
+    storage.set("gstActiveSession", invalidRawValue);
+
+    harness = createAppHarness(indexHtml, scriptSources, storage);
+    evaluate = source => harness.evaluate(source);
+
+    assert(
+        evaluate(
+            "activeSession.mode === 'scorecard' && " +
+            "simpleScorecard[0].score === simpleScorecard[0].par && " +
+            "simpleScorecard[1].score === null"
+        ) &&
+        harness.document.getElementById("saveStatus").textContent ===
+            "Restored from Backup" &&
+        JSON.parse(storage.get("gstInvalidActiveSessionRecords"))
+            .some(function(record) {
+                return record.sourceKey === "gstActiveSession" &&
+                    record.rawValue === invalidRawValue;
+            }),
+        "Recovery: corrupt newest snapshot restores and reports the previous known-good save"
+    );
+
+    const confirmedBeforeFailure =
+        JSON.parse(storage.get("gstActiveSession"));
+
+    evaluate(
+        "var verifiedSetItem = localStorage.setItem; " +
+        "localStorage.setItem = function(key, value) { " +
+            "if (key === ACTIVE_SESSION_KEY) throw new Error('simulated quota failure'); " +
+            "verifiedSetItem(key, value); " +
+        "}; " +
+        "increaseScore(2);"
+    );
+
+    assert(
+        evaluate(
+            "simpleScorecard[2].score === simpleScorecard[2].par && " +
+            "activeSession.state.holes[2].score === simpleScorecard[2].par"
+        ) &&
+        JSON.parse(storage.get("gstActiveSession")).updatedAt ===
+            confirmedBeforeFailure.updatedAt &&
+        harness.document.getElementById("saveStatus")
+            .textContent.includes("Save Failed") &&
+        harness.alerts.some(function(message) {
+            return message.includes("Save Failed");
+        }),
+        "Recovery: storage failure preserves in-memory state, last confirmed snapshot, and visible failure feedback"
+    );
+
+    evaluate(
+        "localStorage.setItem = verifiedSetItem; flushActiveSession()"
+    );
+
+    assert(
+        JSON.parse(storage.get("gstActiveSession"))
+            .state.holes[2].score !== null,
+        "Recovery: failed active save can be retried successfully"
+    );
+}
+
+function verifyInterruptedCompletionReconciliation(indexHtml, scriptSources) {
+    const regularStorage = createStorage();
+    let harness = createAppHarness(
+        indexHtml,
+        scriptSources,
+        regularStorage
+    );
+    let evaluate = source => harness.evaluate(source);
+
+    evaluate(
+        "startScorecardRound(9); " +
+        "simpleScorecard.forEach(function(hole) { hole.score = hole.par; }); " +
+        "persistActiveScorecardProgress(); " +
+        "saveSavedRounds([{ " +
+            "schemaVersion: 1, id: activeSession.id, " +
+            "createdAt: activeSession.createdAt, updatedAt: new Date().toISOString(), " +
+            "date: new Date().toLocaleDateString(), mode: 'scorecard', " +
+            "courseId: activeSession.course.id, courseName: activeSession.course.name, " +
+            "holesPlayed: 9, hciUsed: activeSession.player.hci, " +
+            "holes: cloneJsonValue(simpleScorecard), totalScore: 35 " +
+        "}])"
+    );
+    const regularId =
+        JSON.parse(regularStorage.get("gstActiveSession")).id;
+
+    harness = createAppHarness(
+        indexHtml,
+        scriptSources,
+        regularStorage
+    );
+
+    assert(
+        harness.evaluate(
+            "activeSession === null && getSavedRounds().filter(function(round) { " +
+                "return round.id === " + JSON.stringify(regularId) + "; " +
+            "}).length === 1"
+        ),
+        "Recovery: restart reconciles regular completion after history write but before active cleanup"
+    );
+
+    const h2hStorage = createStorage();
+    harness = createAppHarness(indexHtml, scriptSources, h2hStorage);
+    evaluate = source => harness.evaluate(source);
+    harness.document.getElementById("h2hPlayerName").value = "G-Well";
+    harness.document.getElementById("h2hPlayerHci").value = "25.6";
+    harness.document.getElementById("h2hOpponentName").value = "Crash Test";
+    harness.document.getElementById("h2hOpponentHci").value = "7.4";
+    evaluate(
+        "startH2HHoleByHole(9); " +
+        "h2hMatch.holes.forEach(function(hole, index) { " +
+            "h2hMatch.scores[index].player1 = hole.par; " +
+            "h2hMatch.scores[index].player2 = hole.par; " +
+        "}); persistH2HMatch(); " +
+        "var interruptedAt = new Date().toISOString(); " +
+        "saveSavedRounds([buildH2HScorecardRound(" +
+            "activeSession.id, new Date().toLocaleDateString(), interruptedAt" +
+        ")])"
+    );
+    const h2hId = JSON.parse(h2hStorage.get("gstActiveSession")).id;
+
+    harness = createAppHarness(indexHtml, scriptSources, h2hStorage);
+
+    assert(
+        harness.evaluate(
+            "activeSession === null && " +
+            "getSavedRounds().filter(function(round) { " +
+                "return round.id === " + JSON.stringify(h2hId) + "; " +
+            "}).length === 1 && " +
+            "getSavedH2HMatches().filter(function(match) { " +
+                "return match.id === " + JSON.stringify(h2hId) + "; " +
+            "}).length === 1"
+        ),
+        "Recovery: restart reconciles an interrupted H2H linked-record save exactly once"
+    );
+}
+
+function verifyMalformedHistoryProtection(indexHtml, scriptSources) {
+    const malformedHistory = "{malformed completed history";
+    const storage = createStorage({
+        savedScorecardRounds: malformedHistory
+    });
+    const harness = createAppHarness(indexHtml, scriptSources, storage);
+
+    harness.evaluate(
+        "startScorecardRound(9); " +
+        "simpleScorecard.forEach(function(hole) { hole.score = hole.par; }); " +
+        "persistActiveScorecardProgress(); saveScorecardRound()"
+    );
+
+    assert(
+        storage.get("savedScorecardRounds") === malformedHistory &&
+        storage.has("gstActiveSession") &&
+        harness.document.getElementById("saveStatus")
+            .textContent.includes("Save Failed"),
+        "Recovery: malformed completed history is preserved and cannot be replaced by an empty fallback"
+    );
+}
+
+function verifyOneActiveRuleAndAbandonIsolation(indexHtml, scriptSources) {
+    const completedRound = {
+        id: 500,
+        date: "7/1/2026",
+        holes: []
+    };
+    const completedMatch = {
+        id: 501,
+        type: "h2h-match",
+        result: "win"
+    };
+    const unrelatedShot = {
+        roundId: 99,
+        hole: 1,
+        club: "Driver"
+    };
+    const unrelatedHole = {
+        roundId: 99,
+        hole: 1,
+        par: 4,
+        score: 5
+    };
+    const storage = createStorage({
+        savedScorecardRounds: JSON.stringify([completedRound]),
+        gstH2HMatches: JSON.stringify([completedMatch]),
+        gstPlayerProfile: JSON.stringify({
+            name: "G-Well",
+            hci: 18.4
+        }),
+        shots: JSON.stringify([unrelatedShot]),
+        holes: JSON.stringify([unrelatedHole])
+    });
+    const harness = createAppHarness(indexHtml, scriptSources, storage);
+    const evaluate = source => harness.evaluate(source);
+
+    evaluate("startScorecardRound(9); increaseScore(0)");
+    const scorecardId = JSON.parse(storage.get("gstActiveSession")).id;
+
+    harness.document.getElementById("h2hPlayerName").value = "G-Well";
+    harness.document.getElementById("h2hPlayerHci").value = "18.4";
+    harness.document.getElementById("h2hOpponentName").value = "Blocked";
+    harness.document.getElementById("h2hOpponentHci").value = "10";
+    evaluate("startH2HHoleByHole(9)");
+
+    assert(
+        evaluate(
+            "activeSession.id === " + JSON.stringify(scorecardId) + " && " +
+            "activeSession.mode === 'scorecard' && h2hMatch === null"
+        ) &&
+        !harness.document.getElementById("activeSessionConflictPopup")
+            .classList.contains("hidden"),
+        "Recovery: H2H start cannot overwrite an active regular scorecard"
+    );
+
+    evaluate("cancelActiveSessionConflict()");
+    harness.document.getElementById("courseInput").value = "Blocked Course";
+    harness.document.getElementById("dateInput").value = "2026-07-27";
+    evaluate("saveRound()");
+
+    assert(
+        evaluate(
+            "activeSession.id === " + JSON.stringify(scorecardId) + " && " +
+            "currentRound === null"
+        ),
+        "Recovery: Shot Tracking start cannot overwrite an active regular scorecard"
+    );
+
+    evaluate("cancelActiveSessionConflict(); abandonActiveSession()");
+
+    assert(
+        !storage.has("gstActiveSession") &&
+        JSON.stringify(JSON.parse(storage.get("savedScorecardRounds"))) ===
+            JSON.stringify([completedRound]) &&
+        JSON.stringify(JSON.parse(storage.get("gstH2HMatches"))) ===
+            JSON.stringify([completedMatch]) &&
+        JSON.parse(storage.get("gstPlayerProfile")).hci === 18.4 &&
+        JSON.stringify(JSON.parse(storage.get("shots"))) ===
+            JSON.stringify([unrelatedShot]) &&
+        JSON.stringify(JSON.parse(storage.get("holes"))) ===
+            JSON.stringify([unrelatedHole]),
+        "Recovery: explicit abandonment clears only active data and preserves unrelated history, profile, shots, and holes"
+    );
+}
+
+function verifyMultipleLegacySessionPreservation(indexHtml, scriptSources) {
+    const scorecardHoles = Array.from({ length: 9 }, function(_, index) {
+        return {
+            hole: index + 1,
+            par: 4,
+            yards: 300,
+            tee: "White",
+            handicap: index + 1,
+            score: index === 0 ? 5 : null
+        };
+    });
+    const h2hHoles = Array.from({ length: 9 }, function(_, index) {
+        return {
+            holeNumber: index + 1,
+            par: 4,
+            yards: 300,
+            hcp: index + 1,
+            tee: "White"
+        };
+    });
+    const legacyH2H = {
+        mode: "holeByHole",
+        courseId: "whitinsville",
+        courseName: "Whitinsville Golf Club",
+        holeCount: 9,
+        currentHole: 2,
+        players: [
+            { name: "G-Well", hci: 18.4 },
+            { name: "Legacy Opponent", hci: 10 }
+        ],
+        holes: h2hHoles,
+        scores: h2hHoles.map(function(_, index) {
+            return {
+                player1: index === 0 ? 5 : null,
+                player2: index === 0 ? 4 : null
+            };
+        })
+    };
+    const legacyScorecard = {
+        version: 1,
+        courseId: "whitinsville",
+        holeCount: 9,
+        currentHole: 1,
+        hciUsed: 18.4,
+        holes: scorecardHoles
+    };
+    const storage = createStorage({
+        gstActiveScorecardRound: JSON.stringify(legacyScorecard),
+        gstH2HMatch: JSON.stringify(legacyH2H),
+        gstPlayerProfile: JSON.stringify({
+            name: "G-Well",
+            hci: 18.4
+        })
+    });
+    const harness = createAppHarness(indexHtml, scriptSources, storage);
+
+    assert(
+        harness.evaluate(
+            "activeSessionCandidates.length === 2 && " +
+            "activeSessionRecoveryNotice.includes('2 recoverable active sessions')"
+        ) &&
+        storage.has("gstH2HMatch") &&
+        storage.has("gstActiveScorecardRound"),
+        "Recovery: multiple legacy active sessions are reported and preserved"
+    );
+
+    harness.evaluate("abandonActiveSession()");
+
+    assert(
+        harness.evaluate(
+            "activeSession !== null && activeSession.mode === 'h2h' && " +
+            "h2hMatch.players[1].name === 'Legacy Opponent'"
+        ) &&
+        storage.has("gstH2HMatch"),
+        "Recovery: abandoning the selected legacy session exposes the other recoverable session"
     );
 }
 
@@ -573,15 +1172,18 @@ function verifyCoreDomSmoke(indexHtml, scriptSources) {
         ).sort()) === JSON.stringify([
             "courseId",
             "courseName",
+            "createdAt",
             "date",
             "hciUsed",
             "holes",
             "holesPlayed",
             "id",
             "mode",
-            "totalScore"
+            "schemaVersion",
+            "totalScore",
+            "updatedAt"
         ]),
-        "Regression: completed saved-round structure is unchanged"
+        "Regression: completed saved-round structure adds only recovery metadata"
     );
 
     evaluate("startScorecardRound(9); increaseScore(0); abandonCurrentScorecardRound()");
@@ -1006,6 +1608,38 @@ async function main() {
     verifyMalformedStorageStartup(indexHtml, indexVerification.scriptSources);
     verifyLegacyScorecardMigration(indexHtml, indexVerification.scriptSources);
     verifyCoreDomSmoke(indexHtml, indexVerification.scriptSources);
+    verifyRegularFreshRuntimeRecovery(
+        indexHtml,
+        indexVerification.scriptSources
+    );
+    verifyH2HFreshRuntimeRecovery(
+        indexHtml,
+        indexVerification.scriptSources
+    );
+    verifyShotTrackingFreshRuntimeRecovery(
+        indexHtml,
+        indexVerification.scriptSources
+    );
+    verifyKnownGoodFallbackAndWriteFailure(
+        indexHtml,
+        indexVerification.scriptSources
+    );
+    verifyInterruptedCompletionReconciliation(
+        indexHtml,
+        indexVerification.scriptSources
+    );
+    verifyMalformedHistoryProtection(
+        indexHtml,
+        indexVerification.scriptSources
+    );
+    verifyOneActiveRuleAndAbandonIsolation(
+        indexHtml,
+        indexVerification.scriptSources
+    );
+    verifyMultipleLegacySessionPreservation(
+        indexHtml,
+        indexVerification.scriptSources
+    );
     await verifyHttpAssets(indexVerification.assetReferences);
 
     console.log(`\nVerification complete: ${passedChecks} checks passed.`);

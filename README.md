@@ -8,7 +8,7 @@ A build-free, browser-based golf round, scorecard, shot, statistics, course, and
 2. [Project Structure](#project-structure)
 3. [Application Logic](#application-logic)
 4. [Persistence](#persistence)
-5. [Active Scorecard Persistence](#active-scorecard-persistence)
+5. [Crash-Safe Active Session Persistence](#crash-safe-active-session-persistence)
 6. [Head-to-Head Match Play](#head-to-head-match-play)
 7. [Verification](#verification)
 8. [Deployment](#deployment)
@@ -42,6 +42,7 @@ Then open `http://127.0.0.1:8765/index.html`.
 - `golfshottrackericon.png` — browser and home-screen icon.
 - `gstbanner.png` — application header banner.
 - `REFACTOR_RECOMMENDATIONS.md` — maintainability review, risks, and staged future recommendations.
+- `ACTIVE_SESSION_SCHEMA.md` — canonical active-session schema, verified-save algorithm, recovery, compatibility, completion, and abandonment contracts.
 
 ## Application Logic
 
@@ -84,22 +85,30 @@ H2H persistence uses two keys with separate responsibilities:
 
 Completed H2H saves also append G-Well's compatible scorecard-only record to the existing `savedScorecardRounds` key. Existing records are retained; no key is renamed or replaced.
 
-## Active Scorecard Persistence
+Crash-safe active persistence adds:
 
-In-progress scorecard rounds are stored under the versioned LocalStorage key `gstActiveScorecardRound`. The active record contains:
+- `gstActiveSession` — the current validated schema-version-2 session.
+- `gstActiveSessionPrevious` — the previous verified snapshot.
+- `gstInvalidActiveSessionRecords` — preserved invalid raw values that had to be archived before a compatible key could be reused.
+- `gstShotTrackingRounds` — completed Shot Tracking history.
 
-- Schema version
-- Course ID
-- Hole count
-- Current hole
-- Handicap Index used when the round started
-- Existing scorecard hole objects and entered scores
+The existing `gstActiveScorecardRound`, `simpleScorecard`, `scorecardHoleCount`, `gstH2HMatch`, `currentRound`, `currentHole`, `shots`, `holes`, and `roundMode` keys remain supported as compatibility mirrors and migration sources.
 
-Every score `+` or `−` action immediately updates the active record. The Home-screen Continue tile restores the course, tee data, hole count, current hole, scores, and starting HCI after refresh or reopening the app.
+## Crash-Safe Active Session Persistence
 
-For backward compatibility, the app continues writing `simpleScorecard` and `scorecardHoleCount`. Valid legacy `simpleScorecard` progress is migrated automatically to `gstActiveScorecardRound`. Malformed active or legacy progress is cleared safely without changing `savedScorecardRounds`.
+Regular Scorecard, Head-to-Head, and Shot Tracking share one canonical active-session contract. Every session contains a collision-resistant ID, schema version, mode, active status, created/updated timestamps, course and tee snapshot, hole count, current hole, player snapshot, and complete mode-specific state.
 
-A scorecard cannot be added to completed Recent Rounds while any required score is missing. The active progress remains available to continue later. `Abandon Current Round` requires confirmation and clears only active scorecard progress; completed rounds, profile data, Stats history, Course Info, and Head-to-Head data remain unchanged.
+Every score, shot, hole score, or hole-navigation change builds and validates a complete candidate. GST preserves the current verified snapshot as the previous known-good value, writes the candidate, reads it back, validates it again, and only then displays `Saved`. A failed write leaves the in-memory round and previous verified snapshot intact and displays an unmistakable `Save Failed` warning.
+
+Startup inspects all canonical and legacy active sources. It restores the newest valid session by `updatedAt`, falls back to the previous snapshot if the newest value is invalid, and never automatically deletes invalid raw active data. Multiple legacy active modes are preserved and clearly reported.
+
+The Home Continue Round tile identifies the mode, course, hole count, current hole, and last saved time. Continue opens the correct Scorecard, H2H, or Shot Tracking screen. All start paths enforce one active golf session and offer Continue Existing Round, Abandon Existing Round, or Cancel instead of overwriting data.
+
+Completion is idempotent. Completed records reuse the active session ID and are verified before active state is cleared. Startup reconciles a history write interrupted before cleanup; H2H also reconciles either missing side of its linked Scorecard/H2H pair.
+
+`visibilitychange` and `pagehide` perform best-effort final flushes. Immediate mutation autosave remains the primary protection because mobile lifecycle events are not guaranteed.
+
+See [ACTIVE_SESSION_SCHEMA.md](ACTIVE_SESSION_SCHEMA.md) for the full data contract and recovery algorithm.
 
 ## Head-to-Head Match Play
 
@@ -109,6 +118,8 @@ Head-to-Head provides two independent flows:
 2. **Compare Gross and Net Scores** — the existing completed-score comparison with handicap strokes remains available and unchanged.
 
 Opening Head-to-Head goes directly to New Match Setup. Compare Gross and Net Scores remains available from setup and the Head-to-Head mode picker.
+
+An active Hole-by-Hole Match now survives a complete fresh runtime. Continue Round restores both players, both score arrays, current hole, opponent information, handicaps, and current match status.
 
 The match-play scorecard reuses the regular Scorecard Mode layout classes for hole number, par, yards, HCP, tee, and `+`/`−` gross-score controls. Each hole displays `Current Hole Result:`, both players' gross score, strokes received, net score, and the net match status. The summary at the top displays both players' Playing Handicaps and the current lead or `All Square`.
 
@@ -134,6 +145,8 @@ node scripts/verify-app.js
 The verifier checks every JavaScript file with `node --check`, validates script order and asset references, executes the app with valid and malformed LocalStorage, confirms global HTML handlers, runs representative DOM smoke flows, and serves every app asset through a temporary local HTTP server to require HTTP 200 responses.
 
 Field-test verification also covers active-round autosave, refresh and Continue restoration, current-hole restoration, incomplete-save blocking, abandon isolation, corrupted active data, and migration from legacy scorecard progress.
+
+Crash-recovery verification additionally covers repeated fresh runtimes, Regular Scorecard 9/18-hole recovery, H2H recovery and completion deduplication, Shot Tracking recovery, last-known-good fallback, simulated storage failure and retry, interrupted completion reconciliation, one-active-session protection, multiple legacy sessions, and malformed completed-history protection.
 
 Head-to-Head verification covers setup defaults, opponent inputs, 9-hole Playing Handicap calculations, the Whitinsville 11-stroke allocation fixture, reused Scorecard Mode layout, both players' controls, gross-to-net calculation, numeric match scoring, incomplete-save protection, dual-record persistence, Recent Rounds cards, H2H record Stats, regular Stats isolation, 18-hole allocation, and the existing gross/net comparison.
 
